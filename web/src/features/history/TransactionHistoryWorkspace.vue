@@ -7,6 +7,7 @@ import {
   type WagerTransactionView,
 } from '../../api/wagering-api';
 import { formatTimestamp } from '../dashboard/format-timestamp';
+import { groupTransactionsByRound, transactionStatusLabel } from './history-presentation';
 
 const props = defineProps<{
   readonly walletId: string | null;
@@ -22,29 +23,7 @@ const loading = ref(false);
 const errorMessage = ref<string | null>(null);
 let requestSequence = 0;
 
-const roundGroups = computed(() => {
-  const groups = new Map<string, {
-    readonly roundId: string;
-    readonly gameId: string;
-    readonly transactions: WagerTransactionView[];
-  }>();
-
-  for (const transaction of transactions.value) {
-    const groupKey = `${transaction.gameId}\u0000${transaction.roundId}`;
-    const existing = groups.get(groupKey);
-    if (existing) {
-      existing.transactions.push(transaction);
-      continue;
-    }
-    groups.set(groupKey, {
-      roundId: transaction.roundId,
-      gameId: transaction.gameId,
-      transactions: [transaction],
-    });
-  }
-
-  return [...groups.values()];
-});
+const roundGroups = computed(() => groupTransactionsByRound(transactions.value));
 
 function showError(error: unknown): string {
   if (error instanceof ApiRequestError) {
@@ -63,16 +42,6 @@ function kindLabel(kind: string): string {
     ROLLBACK: 'Reversão',
   };
   return labels[kind] ?? kind;
-}
-
-function statusLabel(status: string): string {
-  const labels: Readonly<Record<string, string>> = {
-    PENDING: 'Pendente',
-    PENDING_REFERENCE: 'Aguardando referência',
-    PROCESSED: 'Processada',
-    REJECTED: 'Rejeitada',
-  };
-  return labels[status] ?? status;
 }
 
 async function loadPage(cursor?: string): Promise<void> {
@@ -220,7 +189,7 @@ watch([() => props.walletId, () => props.active], ([walletId, active]) => {
               <td>{{ transaction.money.amount }} {{ transaction.money.currency }}</td>
               <td>
                 <span class="history-status" :class="'history-status-' + transaction.status.toLowerCase()">
-                  {{ statusLabel(transaction.status) }}
+                  {{ transactionStatusLabel(transaction.status) }}
                 </span>
                 <span v-if="transaction.failureCode" class="history-secondary">{{ transaction.failureCode }}</span>
               </td>
@@ -235,18 +204,19 @@ watch([() => props.walletId, () => props.active], ([walletId, active]) => {
       </div>
 
       <div v-else-if="viewMode === 'rounds' && transactions.length" class="round-list">
-        <article v-for="group in roundGroups" :key="`${group.gameId}-${group.roundId}`" class="round-card">
+        <article v-for="group in roundGroups" :key="`${group.providerId}-${group.gameId}-${group.roundId}`" class="round-card">
           <header class="round-card-heading">
             <div>
               <span class="section-kicker">RODADA</span>
               <h3>{{ group.roundId }}</h3>
+              <span class="history-secondary">Provedor: {{ group.providerId }}</span>
               <span class="history-secondary">Jogo: {{ group.gameId }}</span>
             </div>
             <span class="history-count">{{ group.transactions.length }} operações</span>
           </header>
           <div class="round-transactions">
             <div v-for="transaction in group.transactions" :key="transaction.transactionId" class="round-transaction">
-              <span>{{ kindLabel(transaction.kind) }} · {{ statusLabel(transaction.status) }}</span>
+              <span>{{ kindLabel(transaction.kind) }} · {{ transactionStatusLabel(transaction.status) }}</span>
               <strong>{{ transaction.money.amount }} {{ transaction.money.currency }}</strong>
               <time :datetime="transaction.createdAt">{{ formatTimestamp(transaction.createdAt) }}</time>
             </div>
