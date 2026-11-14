@@ -142,8 +142,10 @@ As migrations são versionadas em **src/infrastructure/persistence/migrations**.
 
 ## Limites e segurança
 
-- A aplicação não implementa autenticação. A API, o banco, o LocalStack e o servidor de desenvolvimento ficam limitados ao loopback para uso local. Outros processos da mesma máquina ainda podem acessar a API; esse arranjo não é adequado para exposição em rede.
-- Não há autenticação artesanal. Para uma implantação real, integrar um provedor de identidade externo e aplicar autorização aos endpoints antes de abrir acesso de rede.
+- A aplicação não implementa autenticação porque esse item não recebe pontos no desafio e o timebox foi priorizado para correção financeira, concorrência e idempotência. Não há usuários/senhas locais; todos os endpoints HTTP estão sem autenticação nesta demonstração.
+- A API, o banco, o LocalStack e o servidor web ficam limitados ao loopback. Isso impede acesso pela rede, mas outros processos da máquina ainda podem chamar a API; não exponha esta configuração.
+- Para uma implantação real, integrar um IdP OIDC externo, como Keycloak ou Zitadel, proteger endpoints de negócio com guard NestJS e autorizar `providerId`/carteiras pela identidade verificada. Health checks permanecem públicos; o desenho e os pontos de extensão estão em **ARCHITECTURE.md**.
+- Mensagens SQS seguem pelo canal interno confiável, sem autenticação HTTP, e continuam sujeitas às validações do parser, domínio e banco. Em AWS, restrinja produtores com IAM.
 - O console de atividade e as métricas são locais à instância. O console mantém no máximo 500 entradas em memória; métricas também reiniciam com o processo.
 - LocalStack é a dependência de SQS usada na execução local e nos testes; a configuração de produção da AWS não faz parte deste projeto.
 - Os testes concorrentes são evidências de correção dos cenários exercitados, não ensaios de carga nem metas de throughput.

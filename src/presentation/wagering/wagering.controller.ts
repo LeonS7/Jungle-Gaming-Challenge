@@ -96,7 +96,10 @@ function mapWageringError(error: unknown): HttpException {
 export class WageringController {
   constructor(private readonly processWager: ProcessWager) {}
 
-  // Ponto de extensão para anexar autenticação fornecida por um provedor de identidade externo.
+  // Ponto de extensão: autenticação não está ativa nesta entrega. Em implantação
+  // OIDC, aplicar aqui um AuthGuard NestJS que valide assinatura via JWKS, iss,
+  // aud e expiração. O guard deve vincular a identidade verificada ao providerId
+  // do comando; o valor enviado no corpo, sozinho, não prova a identidade.
   @Post()
   @HttpCode(HttpStatus.OK)
   async submitWager(

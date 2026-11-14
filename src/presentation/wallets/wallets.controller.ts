@@ -219,7 +219,9 @@ export class WalletsController {
     }
   }
 
-  // Ponto de extensão para anexar autenticação fornecida por um Identity Provider externo.
+  // Ponto de extensão: autenticação não está ativa nesta entrega. Em implantação
+  // OIDC, proteger esta rota e autorizar a carteira conforme a identidade
+  // verificada pelo IdP; não criar usuários ou senhas locais.
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(

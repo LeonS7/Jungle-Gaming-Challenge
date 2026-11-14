@@ -6,7 +6,8 @@ info:
   description: >-
     Contrato dos endpoints de carteiras, wagering, consultas e observabilidade.
     A demonstração local não implementa autenticação; mantenha a API vinculada
-    ao host local e não a exponha em uma rede pública.
+    ao host local e não a exponha em uma rede pública. Os health checks são
+    públicos por desenho; este contrato não declara esquema de segurança.
 servers:
   - url: http://127.0.0.1:3000
     description: Instância local para demonstração

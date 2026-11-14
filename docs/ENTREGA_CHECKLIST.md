@@ -49,7 +49,7 @@ Este checklist cruza os requisitos do enunciado com o código e os testes dispon
 | Console local em GET / | ApiActivityController e teste HTTP | Não redireciona. Buffer efêmero limitado a 500 registros por processo. |
 | Painel ligado à API real | web/src/api e web/src/features | Demonstração visual para jogo, extrato e laboratório; recupera contexto de rodada/retry pela API, agrupa rodadas por provedor e traduz FAILED. Não substitui backend nem calcula valores financeiros. |
 | Segurança de ambiente de demonstração | docker-compose.yml, src/main.ts, README.md | Portas vinculadas ao loopback. Não há autenticação; configuração não deve ser exposta em rede. |
-| Autenticação | ARCHITECTURE.md e ponto de extensão no controller de wagering | Não implementada conforme opção aceita pelo desafio; implantação real exige provedor de identidade externo e autorização. |
+| Autenticação | ARCHITECTURE.md, README.md e comentários em WageringController/WalletsController | Não implementada porque não pontua; documentados OIDC externo, vínculo da identidade com `providerId`, autorização de carteiras, health público e canal SQS interno. Todos os endpoints HTTP atuais permanecem sem autenticação e devem ficar locais. |
 | Métricas e console de logs | src/infrastructure/observability e teste do buffer | Diagnóstico local; métricas e console reiniciam e não agregam réplicas. |
 | Teste de carga | Não há script ou relatório de carga | Não implementado; diferencial opcional e nenhum throughput é alegado. |
 
