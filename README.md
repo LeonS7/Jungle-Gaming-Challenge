@@ -149,6 +149,7 @@ As migrations são versionadas em **src/infrastructure/persistence/migrations**.
 - O console de atividade e as métricas são locais à instância. O console mantém no máximo 500 entradas em memória; métricas também reiniciam com o processo.
 - LocalStack é a dependência de SQS usada na execução local e nos testes; a configuração de produção da AWS não faz parte deste projeto.
 - Os testes concorrentes são evidências de correção dos cenários exercitados, não ensaios de carga nem metas de throughput.
+- O estado `FAILED` existe no domínio, nos testes unitários e nas constraints do banco, mas não há um fluxo de aplicação que persista transações nesse estado. Erros transitórios são revertidos e repetidos; mensagens inválidas ou conflitantes seguem para a DLQ. A diferença em relação à descrição de `FAILED` como falha permanente auditável está registrada em **ARCHITECTURE.md** e precisa de uma decisão de semântica para um fluxo futuro.
 
 ## Autoria e ferramentas de desenvolvimento
 

@@ -59,7 +59,23 @@ Para HTTP, a chave de idempotência e os efeitos financeiros são transacionais,
 
 As referências de reversão devem corresponder a provedor, jogador, carteira, rodada, valor e moeda. Uma transação com referência ausente ou ainda não finalizada fica em **PENDING_REFERENCE**, sem efeito financeiro. Referência que viola uma regra conhecida é rejeitada, não fica pendente.
 
-Transações novas começam em **PENDING**. Podem avançar para **PENDING_REFERENCE**, **PROCESSED**, **REJECTED** ou **FAILED** conforme as regras. Estados terminais não podem ser alterados. **OPENING** é interno e só representa uma abertura de carteira com saldo inicial positivo.
+### Códigos de rejeição
+
+Os códigos abaixo são estáveis e aparecem no `failureCode` da transação rejeitada, no resultado HTTP e no evento `WagerTransactionRejected`:
+
+| Código | Significado | Ação esperada do provedor |
+|---|---|---|
+| `INSUFFICIENT_FUNDS` | BET não cabe no saldo disponível. | Corrigir a causa e, se ainda fizer sentido, enviar nova operação com nova identidade externa e chave. |
+| `REVERSAL_INSUFFICIENT_FUNDS` | Uma reversão que debita a carteira faria o saldo ficar negativo. | Reconciliar e investigar; se a regra permitir nova tentativa, usar nova identidade externa e chave. |
+| `INVALID_REFERENCE` | A referência foi encontrada, mas não atende tipo, escopo, moeda, rodada ou valor exigidos. | Corrigir a referência e enviar nova operação com nova identidade externa e chave. |
+| `ALREADY_REVERSED` | A referência já recebeu uma reversão processada do mesmo tipo. | Não repetir a reversão. |
+| `REFERENCE_EXPIRED` | A referência não chegou antes do TTL de 24 horas. | Tratar como terminal; a transação expirada não é reaberta. |
+
+Erros que impedem a criação de uma transação financeira, como payload inválido, carteira ausente, moeda divergente ou conflito de idempotência, são respostas HTTP distintas e não são registrados como `failureCode` de uma transação inexistente.
+
+Transações novas começam em **PENDING**. As transições de domínio para **PENDING_REFERENCE**, **PROCESSED**, **REJECTED** e **FAILED** são modeladas e estados terminais não podem ser alterados. **OPENING** é interno e só representa uma abertura de carteira com saldo inicial positivo.
+
+**Limite conhecido de FAILED:** o estado, a transição de domínio e as constraints do PostgreSQL existem, mas o caso de uso atual não persiste uma transação nesse estado. Erros transitórios antes do commit revertem toda a operação e são repetidos; mensagens inválidas ou conflitantes são enviadas à DLQ. A DLQ preserva a mensagem, mas isso não equivale a uma `WagerTransaction` FAILED consultável. O enunciado não especifica em que ponto um erro permanente de infraestrutura deve virar uma transação financeira persistida, especialmente se o próprio PostgreSQL estiver indisponível. A interpretação mais literal exigiria definir uma etapa durável de falha após o limite de retry, com código estável, identidade e comportamento de replay próprios; esse fluxo não foi implementado nesta entrega.
 
 ## Integridade e concorrência no PostgreSQL
 
@@ -103,7 +119,7 @@ A inbox conserva a chave (consumer_name, message_id) sem política de expurgo. R
 
 ## Outbox e SQS
 
-A entrada usa a fila **wager-transactions.fifo**, com DLQ **wager-transactions-dlq.fifo**. O consumidor reutiliza o parser e o caso de uso de wagering, calcula o hash do corpo, grava a inbox e só confirma a mensagem após o commit. Erros de negócio terminais são auditados e confirmados. Falhas operacionais recebem nova tentativa com atraso exponencial até 60 segundos; mensagens inválidas vão à DLQ antes da remoção da origem. A fila local move mensagens após cinco recebimentos.
+A entrada usa a fila **wager-transactions.fifo**, com DLQ **wager-transactions-dlq.fifo**. O consumidor reutiliza o parser e o caso de uso de wagering, calcula o hash do corpo, grava a inbox e só confirma a mensagem após o commit. Erros de negócio terminais são auditados e confirmados. Falhas operacionais recebem nova tentativa com atraso exponencial até 60 segundos; mensagens inválidas vão à DLQ antes da remoção da origem. A fila local move mensagens após cinco recebimentos. No SIGTERM, o consumer para de buscar novas mensagens e mantém a renovação da visibilidade durante o processamento. Ao terminar o handler, interrompe o heartbeat antes de confirmar ou agendar retry, evitando que uma renovação concorrente sobrescreva o atraso configurado.
 
 A outbox publica na fila separada **wager-events.fifo**. Publishers concorrentes reclamam linhas elegíveis usando FOR UPDATE SKIP LOCKED, gravam lease e confirmam o claim antes de chamar SQS. Somente o menor evento ainda não publicado de cada transação é reclamado por vez. O grupo FIFO usa a transação; o ID do evento é o identificador estável de deduplicação.
 

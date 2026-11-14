@@ -24,6 +24,8 @@ Este checklist cruza os requisitos do enunciado com o código e os testes dispon
 | BET, WIN, LOSS, REFUND e ROLLBACK | WagerTransaction, ProcessWager e testes de domínio, HTTP e PostgreSQL | Regras e falhas terminais cobertas. |
 | Idempotência persistente, chave global e payload conflitante | Constraint da migration, hash-wager-payload.ts e testes de wagering | Replay retorna snapshot; mesma chave com conteúdo diferente conflita. |
 | Reversão única por referência e tipo | Índice único parcial e testes de reversão concorrente | Constraint de banco mais validação de domínio. |
+| Códigos de rejeição estáveis | `ProcessWager`, eventos de rejeição e tabela em ARCHITECTURE.md | BET sem saldo, reversão que não cabe, referência inválida/expirada e reversão duplicada possuem códigos explícitos; falhas de payload sem transação são respostas HTTP distintas. |
+| Estado terminal `FAILED` | `WagerTransaction.fail`, teste unitário e constraints PostgreSQL | Parcial: entidade/schema aceitam e protegem o estado, mas o caso de uso não grava uma transação `FAILED`; limite e decisão necessária estão descritos em ARCHITECTURE.md. |
 | Atomicidade entre carteira, transação, ledger, inbox e outbox | PostgresWagerPersistence e testes de falha induzida | O rollback PostgreSQL reverte o conjunto. |
 | Reconciliação sem reparo automático | ReconcileWallet e teste HTTP | Compara saldo armazenado e ledger; divergência é observável. |
 

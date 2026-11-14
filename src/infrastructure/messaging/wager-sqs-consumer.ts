@@ -177,9 +177,20 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    let heartbeatActive = true;
+    let heartbeatRequest = Promise.resolve();
     const heartbeat = setInterval(() => {
-      void this.extendVisibility(message.ReceiptHandle!);
+      if (heartbeatActive) {
+        heartbeatRequest = heartbeatRequest.then(() =>
+          this.extendVisibility(message.ReceiptHandle!),
+        );
+      }
     }, VISIBILITY_HEARTBEAT_MILLISECONDS);
+    const stopHeartbeat = async (): Promise<void> => {
+      heartbeatActive = false;
+      clearInterval(heartbeat);
+      await heartbeatRequest;
+    };
     const context = {
       correlationId: parsed.identity.messageId,
       messageId: parsed.identity.messageId,
@@ -192,6 +203,7 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
         parsed.command,
         parsed.identity,
       );
+      await stopHeartbeat();
       const completeContext = {
         ...context,
         correlationId: result.result?.transactionId ?? context.correlationId,
@@ -205,6 +217,7 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
         status: result.result?.status,
       });
     } catch (error) {
+      await stopHeartbeat();
       if (error instanceof InboxMessagePayloadConflictError) {
         await this.moveToDeadLetterQueue(message, error.name, context);
       } else if (isTerminalBusinessError(error)) {
@@ -222,7 +235,7 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
         await this.retryLater(message, error, context);
       }
     } finally {
-      clearInterval(heartbeat);
+      await stopHeartbeat();
     }
   }
 
@@ -266,7 +279,9 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   private async extendVisibility(receiptHandle: string): Promise<void> {
-    if (!this.queueUrls || this.stopping) {
+    // O encerramento aguarda o handler atual; mantenha a mensagem invisível até
+    // ele concluir ou programar retry, mesmo depois de o processo receber SIGTERM.
+    if (!this.queueUrls) {
       return;
     }
     try {
