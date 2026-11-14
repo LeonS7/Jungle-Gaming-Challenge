@@ -15,6 +15,7 @@ Implementação do desafio **Distributed Wagering Processor**, da Jungle Gaming.
 - Worker para resolver transações que aguardam uma referência fora de ordem.
 - Health checks, métricas Prometheus e console local de atividade em **GET /**.
 - Painel visual com as áreas **Jogo**, **Extrato** e **Laboratório de Testes**, cenários guiados e chamadas à API real.
+- Recuperação da rodada ativa e do retry incerto após navegação ou recarga, sempre consultando a API como fonte do estado financeiro.
 
 ## Tecnologias
 
@@ -106,7 +107,7 @@ Os testes criam schemas e filas temporários e os removem ao terminar. Eles não
 | GET /metrics | Expõe métricas Prometheus. |
 | GET / e GET /activity?after=... | Abre o console e consulta atividade recente desta instância. |
 
-Paginação aceita cursor e limit; o padrão é 50 registros e o máximo é 100. Valores monetários entram e saem como strings decimais com duas casas. O contrato OpenAPI em **docs/openapi.yaml** documenta o console de atividade e o histórico paginado de transações; não é uma especificação completa de todas as rotas.
+Paginação aceita cursor e limit; o padrão é 50 registros e o máximo é 100. Valores monetários entram e saem como strings decimais com duas casas. O contrato OpenAPI em **docs/openapi.yaml** cobre as rotas HTTP de carteiras, wagering, consultas, saúde, métricas e console de atividade.
 
 ## Regras financeiras e decisões importantes
 
@@ -116,6 +117,7 @@ Paginação aceita cursor e limit; o padrão é 50 registros e o máximo é 100.
 - O lock é por carteira. Saldo, ledger, transação e outbox compartilham o mesmo commit financeiro; a inbox também participa desse commit na entrada SQS. O publisher envia somente eventos já confirmados no banco.
 - A entrega da outbox é *at-least-once*: consumidores de eventos precisam tratar o mesmo eventId de forma idempotente.
 - Reconciliação informa diferenças, mas não corrige automaticamente registros financeiros.
+- A rodada ativa e o retry do painel guardam apenas a identidade e o payload necessário no navegador; a aplicação sempre confirma status, saldo e histórico consultando a API.
 
 ## Navegação pelo código
 
@@ -128,13 +130,13 @@ Paginação aceita cursor e limit; o padrão é 50 registros e o máximo é 100.
       main.ts          inicialização do NestJS
     test/
       unit/            regras de domínio e utilitários isolados
-      integration/     PostgreSQL, LocalStack, HTTP e processos concorrentes
+      integration/     PostgreSQL, LocalStack, HTTP, concorrência e recuperação após queda de processo
     web/
       src/api/         cliente HTTP do painel
       src/features/    telas de Jogo, Extrato, Carteiras e Laboratório
       test/            contratos do cliente e regras locais de apresentação
     docker/            configuração de inicialização das filas do LocalStack
-    docs/              contrato OpenAPI disponível
+    docs/              contrato OpenAPI e checklist da entrega
 
 As migrations são versionadas em **src/infrastructure/persistence/migrations**. Para aplicar alterações de schema, use **bun run db:migrate**. **bun run db:migrate:down** reverte a última migration e remove os objetos e dados abrangidos por ela; use somente em um banco descartável ou depois de proteger os dados necessários.
 
@@ -154,4 +156,4 @@ O projeto foi conduzido por **Leonardo de Souza da Luz**. Codex foi utilizado de
 
 - **ARCHITECTURE.md**: decisões, fluxos, invariantes e trade-offs.
 - **CHALLENGE.md**: enunciado técnico usado na avaliação.
-- **docs/openapi.yaml**: parte documentada do contrato HTTP.
+- **docs/openapi.yaml**: contrato documentado das rotas HTTP implementadas.

@@ -24,7 +24,7 @@ A interface web é um cliente de demonstração conectado à API real. Ela não 
       src/features/    jogo, extrato, carteiras e laboratório
       test/            contratos e regras de apresentação
     docker/            criação das filas locais do LocalStack
-    docs/              parte documentada do contrato OpenAPI
+    docs/              contrato OpenAPI e checklist da entrega
 
 As pastas seguem as fronteiras Domain, Application, Infrastructure e Presentation sem camadas adicionais para cada conceito. Registros do MikroORM ficam separados das entidades de domínio. Migrations versionadas ficam em **src/infrastructure/persistence/migrations** e não são aplicadas automaticamente ao iniciar a API.
 
@@ -42,7 +42,7 @@ Para HTTP, a chave de idempotência e os efeitos financeiros são transacionais,
 
 - **Bun 1.x** instala, executa e testa os pacotes; **TypeScript strict** verifica os tipos; **NestJS** entrega a API.
 - **MikroORM** mapeia o PostgreSQL. SQL explícito é usado nos trechos que precisam demonstrar locks, constraints, claims e precisão dos cursores.
-- **decimal.js** mantém a aritmética decimal no value object Money. A entrada e a saída usam strings de duas casas; o banco usa NUMERIC(30,2) e o mapeamento retorna strings. number não representa valores monetários.
+- **decimal.js** mantém a aritmética decimal no value object Money. A entrada e a saída usam strings de duas casas; entradas com escala maior são rejeitadas em vez de arredondadas. O banco usa NUMERIC(30,2) e o mapeamento retorna strings. number não representa valores monetários.
 - O domínio valida moedas e impede operações entre moedas diferentes. Os exemplos de demonstração usam BRL.
 - IDs são UUIDs, as datas usam TIMESTAMPTZ, e o ledger registra valor, direção, saldo anterior e saldo posterior.
 - PostgreSQL e LocalStack SQS são iniciados por Docker Compose. LocalStack é o alvo local de desenvolvimento e testes; provisionamento e operação em AWS de produção não fazem parte do escopo entregue.
@@ -127,17 +127,27 @@ Logs estruturados de controllers e workers registram eventos e identificadores o
 
 O painel **web/** usa Vue 3, TypeScript e Vite. **Jogo** cria ou seleciona carteira e envia comandos; **Extrato** lê o histórico paginado da API; **Laboratório de Testes** apresenta ferramentas e cenários guiados. O painel não acessa o banco ou SQS e não calcula dinheiro. Cenários criam operações persistentes que não podem ser apagadas pelo painel.
 
+O navegador guarda o identificador da carteira selecionada, o contexto da BET ativa e o último retry incerto para sobreviver a navegação e recarga. Esses dados locais não autorizam movimentações nem determinam o saldo: ao restaurar uma rodada, o painel consulta a BET e percorre o histórico paginado para verificar se já existe WIN ou LOSS terminal. Se a API indicar resultado pendente ou inconsistência, a resolução fica bloqueada e o usuário pode consultar novamente. O retry incerto preserva payload e chave originais; estado pendente é consultado pela identidade do provedor, e o estado local só é liberado depois de uma resposta terminal conhecida.
+
+O extrato agrupa rodadas por provedor, jogo e rodada, evitando juntar identificadores iguais que pertencem a provedores diferentes. Os rótulos apresentados incluem PENDING, PENDING_REFERENCE, PROCESSED, REJECTED e FAILED.
+
 Autenticação não foi implementada porque o enunciado permite deixá-la fora do timebox e ela não pontua. Não há usuários locais nem senha artesanal. A API e as portas dos serviços ficam no loopback para demonstração, mas outros processos da máquina ainda podem acessá-las. Não se deve publicar essa configuração em rede. Para implantação, integrar um provedor de identidade externo e acrescentar guard e autorização aos endpoints; o comentário em WageringController marca o ponto de extensão para essa integração.
 
 ## Testes e evidências
 
 A suíte usa Bun e serviços PostgreSQL/LocalStack reais nas integrações:
 
-- Testes de domínio cobrem operações decimais, carteiras, transições, ledger, reversões e referências.
+- Testes de domínio cobrem escala, arredondamento e entradas inválidas de Money; invariantes da Wallet; transições BET, WIN, LOSS, REFUND e ROLLBACK; e referências divergentes de provedor, jogador, carteira, rodada e moeda.
 - Testes PostgreSQL cobrem migrations, constraints, imutabilidade, concorrência de idempotência e reversões, atomicidade, referências pendentes e reconciliação.
 - O aceite HTTP executa duas BETs de 80.00 em uma carteira de 100.00 e verifica uma aprovada, uma rejeitada, saldo 20.00, um débito e reconciliação.
 - Um teste mantém uma carteira bloqueada e confirma que uma operação em outra carteira conclui antes de liberar o primeiro lock.
 - Um teste distribuído inicia três processos Bun, envia 50 solicitações iguais, valida um único débito e recupera referência pendente após reinício.
-- Integração SQS simula o intervalo após o commit e antes do ACK: confirma os efeitos financeiros, deixa a mensagem sem confirmação, a torna visível novamente e inicia o consumer real. A inbox identifica duplicata e a redelivery recebe ACK sem novo débito. O mesmo teste exercita retry transitório e DLQ.
+- Integração SQS encerra um processo real depois do commit e antes do ACK: deixa a mensagem sem confirmação, inicia uma segunda instância e verifica que a inbox evita novo débito e permite ACK na redelivery.
+- Integração da outbox encerra o publisher depois que o LocalStack aceita o evento, mas antes de o processo confirmar a publicação no PostgreSQL. O lease é expirado deterministicamente no teste; outra instância recupera os registros e o evento não se perde.
+- Integração PostgreSQL encerra a conexão do backend antes do commit e confirma que saldo, transação, ledger e outbox não ficam parcialmente gravados; a mesma solicitação pode ser repetida depois.
+- Integração com duas instâncias reais disputa saldo, valida um único débito, reinicia o serviço e confirma replay idempotente e conflito para payload divergente.
+- A integração SQS também exercita retry transitório e DLQ.
+
+O contrato em **docs/openapi.yaml** documenta as rotas HTTP implementadas. A interface possui testes das regras de apresentação, persistência local de contexto e contratos do cliente HTTP; os testes financeiros e de integração permanecem no backend, onde as regras são autoritativas.
 
 Os cenários de concorrência são testes de correção, não ensaios de carga. Não há afirmação de throughput, p95/p99 ou capacidade de produção.
