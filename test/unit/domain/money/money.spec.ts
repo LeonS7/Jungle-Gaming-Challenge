@@ -39,6 +39,12 @@ describe('Money', () => {
     expect(amount.toJSON().amount).toBe('1000000000000000000000000000000.00');
   });
 
+  test('rejeita escala acima de duas casas em vez de arredondar a entrada', () => {
+    expect(() => Money.from({ amount: '1.005', currency: 'BRL' })).toThrow(
+      InvalidMoneyError,
+    );
+  });
+
   test('permite aritmética com sinal e preserva a moeda', () => {
     const negative = Money.from({ amount: '25.00', currency: 'BRL' }).subtract(
       Money.from({ amount: '30.00', currency: 'BRL' }),

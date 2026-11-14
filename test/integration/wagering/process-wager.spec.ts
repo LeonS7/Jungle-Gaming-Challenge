@@ -717,6 +717,23 @@ test('REFUND e ROLLBACK aplicam a direção inversa e mantêm o ledger auditáve
       money: bet.money,
     });
     const processedBetRollback = await processWager.execute(rollbackBet);
+    const win = createWager(playerId, walletId, {
+      externalTransactionId: 'premio-reversao-valida',
+      idempotencyKey: 'chave-premio-reversao-valida',
+      payloadHash: 'hash-premio-reversao-valida',
+      kind: WagerTransactionKind.Win,
+      money: Money.from({ amount: '10.00', currency: 'BRL' }),
+    });
+    const processedWin = await processWager.execute(win);
+    const rollbackWin = createWager(playerId, walletId, {
+      externalTransactionId: 'rollback-premio-valido',
+      idempotencyKey: 'chave-rollback-premio-valido',
+      payloadHash: 'hash-rollback-premio-valido',
+      kind: WagerTransactionKind.Rollback,
+      referenceExternalTransactionId: win.externalTransactionId,
+      money: win.money,
+    });
+    const processedWinRollback = await processWager.execute(rollbackWin);
 
     expect(processedBet.status).toBe(WagerTransactionStatus.Processed);
     expect(processedBet.balance?.toJSON().amount).toBe('80.00');
@@ -726,6 +743,10 @@ test('REFUND e ROLLBACK aplicam a direção inversa e mantêm o ledger auditáve
     expect(processedRefundRollback.balance?.toJSON().amount).toBe('80.00');
     expect(processedBetRollback.status).toBe(WagerTransactionStatus.Processed);
     expect(processedBetRollback.balance?.toJSON().amount).toBe('100.00');
+    expect(processedWin.status).toBe(WagerTransactionStatus.Processed);
+    expect(processedWin.balance?.toJSON().amount).toBe('110.00');
+    expect(processedWinRollback.status).toBe(WagerTransactionStatus.Processed);
+    expect(processedWinRollback.balance?.toJSON().amount).toBe('100.00');
 
     const walletRows = await orm.em.getConnection().execute(
       `select "balance"::text as "balance", "version"
@@ -735,12 +756,13 @@ test('REFUND e ROLLBACK aplicam a direção inversa e mantêm o ledger auditáve
     const referenceRows = await orm.em.getConnection().execute(
       `select "kind", "reference_transaction_id" as "referenceTransactionId"
        from ${table(schema, 'wager_transactions')}
-       where "external_transaction_id" in (?, ?, ?)
+       where "external_transaction_id" in (?, ?, ?, ?)
        order by "external_transaction_id"`,
       [
         refund.externalTransactionId,
         rollbackRefund.externalTransactionId,
         rollbackBet.externalTransactionId,
+        rollbackWin.externalTransactionId,
       ],
     );
     const ledgerRows = await orm.em.getConnection().execute(
@@ -749,25 +771,29 @@ test('REFUND e ROLLBACK aplicam a direção inversa e mantêm o ledger auditáve
        from ${table(schema, 'wallet_ledger_entries')} as ledger
        join ${table(schema, 'wager_transactions')} as wager
          on wager."id" = ledger."transaction_id"
-       where wager."external_transaction_id" in (?, ?, ?, ?)
+       where wager."external_transaction_id" in (?, ?, ?, ?, ?, ?)
        order by wager."created_at", wager."id"`,
       [
         bet.externalTransactionId,
         refund.externalTransactionId,
         rollbackRefund.externalTransactionId,
         rollbackBet.externalTransactionId,
+        win.externalTransactionId,
+        rollbackWin.externalTransactionId,
       ],
     );
     const replay = await processWager.execute(refund);
 
-    expect(walletRows).toEqual([{ balance: '100.00', version: 5 }]);
-    expect(referenceRows).toHaveLength(3);
-    expect(ledgerRows).toHaveLength(4);
+    expect(walletRows).toEqual([{ balance: '100.00', version: 7 }]);
+    expect(referenceRows).toHaveLength(4);
+    expect(ledgerRows).toHaveLength(6);
     expect(ledgerRows).toEqual(expect.arrayContaining([
       { kind: 'BET', direction: 'DEBIT', amount: '20.00' },
       { kind: 'REFUND', direction: 'CREDIT', amount: '20.00' },
       { kind: 'ROLLBACK', direction: 'DEBIT', amount: '20.00' },
       { kind: 'ROLLBACK', direction: 'CREDIT', amount: '20.00' },
+      { kind: 'WIN', direction: 'CREDIT', amount: '10.00' },
+      { kind: 'ROLLBACK', direction: 'DEBIT', amount: '10.00' },
     ]));
     expect(replay.idempotentReplay).toBe(true);
     expect(replay.balance?.toJSON().amount).toBe('100.00');

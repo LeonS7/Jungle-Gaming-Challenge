@@ -39,6 +39,7 @@ function processedReference(
   kind: WagerTransactionKind,
   externalTransactionId = 'external-1',
   value = money('10.00'),
+  overrides: Partial<CreateWagerTransactionProps> = {},
 ): WagerTransaction {
   const reference = transaction({
     id: 'reference-internal-id',
@@ -48,6 +49,7 @@ function processedReference(
     money: value,
     referenceExternalTransactionId:
       kind === WagerTransactionKind.Refund ? 'original-bet-external-id' : undefined,
+    ...overrides,
   });
   reference.markProcessed(
     kind === WagerTransactionKind.Refund ? 'original-bet-internal-id' : undefined,
@@ -256,6 +258,24 @@ describe('WagerTransaction', () => {
       'deve corresponder ao provedor, jogador, carteira, rodada',
     );
     expect(wrongOwner.status).toBe(WagerTransactionStatus.Processed);
+  });
+
+  test('rejeita referência de outro provedor, jogador, carteira, rodada ou moeda', () => {
+    const rollback = transaction({
+      kind: WagerTransactionKind.Rollback,
+      referenceExternalTransactionId: 'bet-1',
+    });
+    const mismatchedReferences = [
+      processedReference(WagerTransactionKind.Bet, 'bet-1', money('10.00'), { providerId: 'outro-provedor' }),
+      processedReference(WagerTransactionKind.Bet, 'bet-1', money('10.00'), { playerId: 'outro-jogador' }),
+      processedReference(WagerTransactionKind.Bet, 'bet-1', money('10.00'), { walletId: 'outra-carteira' }),
+      processedReference(WagerTransactionKind.Bet, 'bet-1', money('10.00'), { roundId: 'outra-rodada' }),
+      processedReference(WagerTransactionKind.Bet, 'bet-1', money('10.00', 'USD')),
+    ];
+
+    for (const reference of mismatchedReferences) {
+      expect(() => rollback.ledgerDirectionFor(reference)).toThrow();
+    }
   });
 
   test('exige valor positivo e reidrata o estado sem repetir transições', () => {
