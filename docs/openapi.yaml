@@ -1,12 +1,12 @@
-# Esta página documenta o console de atividade e a consulta paginada do histórico.
+# Esta página descreve o contrato HTTP público da API e seus limites locais.
 openapi: 3.1.0
 info:
   title: API de wagering distribuído
   version: 1.0.0
   description: >-
-    Contrato da consulta paginada de transações persistidas e da atividade local
-    da API. A demonstração não possui autenticação e deve permanecer limitada ao
-    host local.
+    Contrato dos endpoints de carteiras, wagering, consultas e observabilidade.
+    A demonstração local não implementa autenticação; mantenha a API vinculada
+    ao host local e não a exponha em uma rede pública.
 servers:
   - url: http://127.0.0.1:3000
     description: Instância local para demonstração
@@ -15,9 +15,7 @@ paths:
     get:
       operationId: abrirConsoleDeAtividade
       summary: Abre o console local da API
-      description: >-
-        Entrega a página de acompanhamento de requisições e eventos recentes do
-        processo. A página consulta GET /activity em intervalos regulares.
+      description: Página HTML que consulta GET /activity em intervalos regulares.
       responses:
         '200':
           description: Página HTML do console de atividade.
@@ -30,11 +28,11 @@ paths:
       operationId: consultarAtividadeRecente
       summary: Consulta registros recentes da instância atual
       description: >-
-        Retorna registros mantidos em memória pelo processo atual. São limitados
-        aos 500 mais recentes e desaparecem quando a instância reinicia. Não há
-        agregação entre réplicas. Requisições HTTP são registradas sem corpo,
-        cabeçalhos nem parâmetros. Este histórico não participa de idempotência
-        nem de consistência financeira.
+        Retorna registros mantidos em memória pelo processo atual, limitados aos
+        500 mais recentes. Eles desaparecem quando a instância reinicia e não
+        são agregados entre réplicas. Requisições são registradas sem corpo,
+        cabeçalhos ou parâmetros. Este recurso não participa da consistência
+        financeira nem da idempotência.
       parameters:
         - name: after
           in: query
@@ -46,7 +44,7 @@ paths:
             maximum: 9007199254740991
       responses:
         '200':
-          description: Registros recentes depois do cursor informado.
+          description: Registros retidos posteriores ao cursor informado.
           content:
             application/json:
               schema:
@@ -57,7 +55,175 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /health/live:
+    get:
+      operationId: verificarLiveness
+      summary: Verifica se o processo HTTP está ativo
+      responses:
+        '200':
+          description: Processo ativo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+  /health/ready:
+    get:
+      operationId: verificarReadiness
+      summary: Verifica PostgreSQL e filas SQS configuradas
+      responses:
+        '200':
+          description: PostgreSQL e filas acessíveis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503':
+          description: Uma ou mais dependências indisponíveis.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessFailure'
+  /metrics:
+    get:
+      operationId: consultarMetricas
+      summary: Consulta métricas no formato Prometheus
+      responses:
+        '200':
+          description: Métricas operacionais em texto.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /wallets:
+    post:
+      operationId: abrirCarteira
+      summary: Cria uma carteira com saldo inicial
+      description: >-
+        Cria carteira, transação OPENING, lançamento de ledger e evento outbox
+        na mesma transação PostgreSQL. O saldo inicial é uma string decimal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenWalletRequest'
+      responses:
+        '201':
+          description: Carteira aberta.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '400':
+          description: Dados inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Carteira já existente para o jogador e a moeda.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna ao criar uma carteira consistente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /wallets/{walletId}:
+    parameters:
+      - $ref: '#/components/parameters/WalletId'
+    get:
+      operationId: consultarCarteira
+      summary: Consulta saldo e versão de uma carteira
+      responses:
+        '200':
+          description: Carteira consultada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '400':
+          description: Identificador inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Carteira inexistente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /wallets/{walletId}/ledger:
+    parameters:
+      - $ref: '#/components/parameters/WalletId'
+    get:
+      operationId: listarLedgerDaCarteira
+      summary: Lista lançamentos imutáveis do ledger
+      description: Consulta paginada, da entrada mais recente para a mais antiga.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Página do ledger.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletLedgerPage'
+        '400':
+          description: UUID, cursor ou limite inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Carteira inexistente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /wallets/{walletId}/transactions:
+    parameters:
+      - $ref: '#/components/parameters/WalletId'
     get:
       operationId: listarTransacoesDaCarteira
       summary: Lista o histórico persistido da carteira
@@ -66,31 +232,11 @@ paths:
         A operação é somente leitura e usa cursor opaco vinculado à carteira.
         O cursor não é uma assinatura criptográfica.
       parameters:
-        - name: walletId
-          in: path
-          required: true
-          description: Identificador UUID da carteira.
-          schema:
-            type: string
-            format: uuid
-        - name: cursor
-          in: query
-          required: false
-          description: Cursor opaco retornado pela página anterior.
-          schema:
-            type: string
-        - name: limit
-          in: query
-          required: false
-          description: Quantidade máxima de itens; o padrão é 50.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Página do histórico consultada.
+          description: Página do histórico.
           content:
             application/json:
               schema:
@@ -114,27 +260,383 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
         '500':
-          description: Falha interna inesperada.
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /wallets/{walletId}/reconciliation:
+    parameters:
+      - $ref: '#/components/parameters/WalletId'
+    post:
+      operationId: reconciliarCarteira
+      summary: Compara o saldo da carteira com a soma do ledger
+      description: Operação somente leitura; divergências são retornadas no resultado.
+      responses:
+        '200':
+          description: Resultado da reconciliação, consistente ou divergente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletReconciliation'
+        '400':
+          description: Identificador inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Carteira inexistente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /wagering/transactions:
+    post:
+      operationId: enviarTransacaoDeWagering
+      summary: Envia uma transação financeira do provedor
+      description: >-
+        A chave global deve ser enviada no cabeçalho Idempotency-Key. O backend
+        valida carteira, referência e saldo e grava transação, ledger e outbox
+        atomicamente antes de publicar eventos. Uma referência ainda não
+        recebida retorna 202 e permanece pendente para reconciliação posterior.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Chave única global cujo reuso exige payload idêntico.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WagerRequest'
+      responses:
+        '200':
+          description: Transação decidida, inclusive quando rejeitada por regra financeira.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WagerSubmission'
+        '202':
+          description: Referência ainda não disponível; o resultado poderá ser atualizado depois.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WagerSubmission'
+        '400':
+          description: Payload inválido ou tipo ainda não suportado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '501':
+          description: Tipo de transação não suportado pelo processamento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Conflito de idempotência, transação externa ou operação ainda em processamento.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Moeda diferente da moeda da carteira.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Carteira inexistente ou pertencente a outro jogador.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /wagering/transactions/{transactionId}:
+    get:
+      operationId: consultarTransacaoPorId
+      summary: Consulta uma transação pelo identificador interno
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          description: Identificador UUID interno.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transação persistida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WagerTransaction'
+        '400':
+          description: UUID inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Transação inexistente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /providers/{providerId}/wagering/transactions/{externalTransactionId}:
+    get:
+      operationId: consultarTransacaoPorIdentidadeDoProvedor
+      summary: Consulta uma transação pela identidade externa do provedor
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: externalTransactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Transação persistida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WagerTransaction'
+        '404':
+          description: Transação inexistente para provedor e identificador informados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Persistência temporariamente indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '500':
+          description: Falha interna.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
 components:
+  parameters:
+    WalletId:
+      name: walletId
+      in: path
+      required: true
+      description: Identificador UUID da carteira.
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor opaco retornado pela página anterior.
+      schema:
+        type: string
+        minLength: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Quantidade máxima de itens; padrão 50.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
   schemas:
     Money:
       type: object
+      additionalProperties: false
       required: [amount, currency]
       properties:
         amount:
           type: string
-          pattern: '^(0|[1-9][0-9]{0,27})\.[0-9]{2}$'
+          description: Decimal com duas casas; pode ser negativo no campo difference da reconciliação.
+          pattern: '^-?(0|[1-9][0-9]{0,27})\.[0-9]{2}$'
           example: '80.00'
         currency:
           type: string
-          minLength: 3
-          maxLength: 3
+          pattern: '^[A-Z]{3}$'
+          description: Código ISO-4217 aceito pelo serviço.
           example: BRL
-    WalletTransaction:
+    NonNegativeMoney:
+      description: Money não negativo aceito como saldo inicial.
+      allOf:
+        - $ref: '#/components/schemas/Money'
+        - type: object
+          properties:
+            amount:
+              type: string
+              pattern: '^[0-9]{1,28}\.[0-9]{2}$'
+    PositiveMoney:
+      description: Money positivo exigido para uma transação de wagering.
+      allOf:
+        - $ref: '#/components/schemas/Money'
+        - type: object
+          properties:
+            amount:
+              type: string
+              pattern: '^[0-9]{1,28}\.[0-9]{2}$'
+              not:
+                pattern: '^0+\.00$'
+    OpenWalletRequest:
+      type: object
+      additionalProperties: false
+      required: [playerId, initialBalance]
+      properties:
+        playerId:
+          type: string
+          minLength: 1
+        initialBalance:
+          $ref: '#/components/schemas/NonNegativeMoney'
+    Wallet:
+      type: object
+      required: [id, playerId, balance, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        playerId:
+          type: string
+        balance:
+          $ref: '#/components/schemas/Money'
+        version:
+          type: integer
+          minimum: 1
+    WalletLedgerEntry:
+      type: object
+      required: [id, transactionId, direction, money, balanceBefore, balanceAfter, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        transactionId:
+          type: string
+          format: uuid
+        direction:
+          type: string
+          enum: [CREDIT, DEBIT]
+        money:
+          $ref: '#/components/schemas/Money'
+        balanceBefore:
+          $ref: '#/components/schemas/Money'
+        balanceAfter:
+          $ref: '#/components/schemas/Money'
+        createdAt:
+          type: string
+          format: date-time
+    WalletLedgerPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletLedgerEntry'
+        nextCursor:
+          type: [string, 'null']
+    WagerRequest:
+      type: object
+      additionalProperties: false
+      required: [providerId, externalTransactionId, playerId, walletId, roundId, gameId, kind, money]
+      properties:
+        providerId:
+          type: string
+          minLength: 1
+        externalTransactionId:
+          type: string
+          minLength: 1
+        playerId:
+          type: string
+          minLength: 1
+        walletId:
+          type: string
+          format: uuid
+        roundId:
+          type: string
+          minLength: 1
+        gameId:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum: [BET, WIN, LOSS, REFUND, ROLLBACK]
+        referenceExternalTransactionId:
+          type: string
+          minLength: 1
+          description: Obrigatório para REFUND e ROLLBACK.
+        money:
+          $ref: '#/components/schemas/PositiveMoney'
+    WagerSubmission:
+      type: object
+      required: [transactionId, status, idempotentReplay]
+      properties:
+        transactionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING_REFERENCE, PROCESSED, REJECTED, FAILED]
+        balance:
+          oneOf:
+            - $ref: '#/components/schemas/Money'
+            - type: 'null'
+        idempotentReplay:
+          type: boolean
+        failureCode:
+          type: string
+    WagerTransaction:
       type: object
       required:
         - transactionId
@@ -182,7 +684,7 @@ components:
           format: uuid
         status:
           type: string
-          enum: [PENDING, PENDING_REFERENCE, PROCESSED, REJECTED]
+          enum: [PENDING, PENDING_REFERENCE, PROCESSED, REJECTED, FAILED]
         failureCode:
           type: [string, 'null']
         balance:
@@ -202,9 +704,61 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/WalletTransaction'
+            $ref: '#/components/schemas/WagerTransaction'
         nextCursor:
           type: [string, 'null']
+    WalletReconciliation:
+      type: object
+      required: [walletId, storedBalance, calculatedBalance, difference, consistent, checkedEntries]
+      properties:
+        walletId:
+          type: string
+          format: uuid
+        storedBalance:
+          $ref: '#/components/schemas/Money'
+        calculatedBalance:
+          $ref: '#/components/schemas/Money'
+        difference:
+          $ref: '#/components/schemas/Money'
+        consistent:
+          type: boolean
+        checkedEntries:
+          type: integer
+          minimum: 0
+    Readiness:
+      type: object
+      required: [status, dependencies]
+      properties:
+        status:
+          type: string
+          const: ok
+        dependencies:
+          type: object
+          required: [postgres, sqs]
+          properties:
+            postgres:
+              type: string
+              const: ok
+            sqs:
+              type: string
+              const: ok
+    ReadinessFailure:
+      type: object
+      required: [status, dependencies]
+      properties:
+        status:
+          type: string
+          const: error
+        dependencies:
+          type: object
+          required: [postgres, sqs]
+          properties:
+            postgres:
+              type: string
+              enum: [ok, error]
+            sqs:
+              type: string
+              enum: [ok, error]
     ApiActivityRecord:
       type: object
       required: [sequence, occurredAt, level, message]
@@ -240,10 +794,10 @@ components:
           maximum: 9007199254740991
         gap:
           type: boolean
-          description: Indica que há entradas anteriores fora do buffer ou da página inicial.
+          description: Indica entradas anteriores fora do buffer ou da página inicial.
         hasMore:
           type: boolean
-          description: Indica que há mais entradas retidas após a página atual.
+          description: Indica entradas retidas depois da página atual.
     ApiError:
       type: object
       required: [statusCode, code, message]
