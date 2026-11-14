@@ -1,4 +1,4 @@
-# Jungle Gmaming Challenge — Distributed Wagering Processor
+# Jungle Gaming Challenge — Processador Distribuído de Apostas
 
 Implementação do desafio **Distributed Wagering Processor**, da Jungle Gaming. O projeto demonstra como processar transações financeiras de apostas sob concorrência, mensagens repetidas e falhas de infraestrutura, mantendo PostgreSQL como autoridade para saldo e idempotência.
 
