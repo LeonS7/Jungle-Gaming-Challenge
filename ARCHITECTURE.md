@@ -153,9 +153,9 @@ O extrato agrupa rodadas por provedor, jogo e rodada, evitando juntar identifica
 
 Autenticação não foi implementada: o enunciado informa que ela não vale pontos, então o timebox foi aplicado às garantias financeiras, à concorrência e à idempotência. Não há tabela local de usuários, armazenamento de senhas nem guard no-op que possa ser confundido com proteção. Nesta demonstração, **todos os endpoints HTTP estão sem autenticação**. As portas ficam vinculadas ao loopback, o que evita exposição pela rede, mas não impede acesso de outros processos da mesma máquina. Esta configuração não deve ser publicada em rede.
 
-### Desenho recomendado para uma próxima etapa
+### Desenho pensado para autenticação
 
-Se o serviço passar a aceitar tráfego externo, a opção recomendada é integrar um Identity Provider OIDC externo, como Keycloak ou Zitadel, iniciado no Docker Compose. Não criar cadastro ou senha próprios. Para chamadas de provedores, usar client credentials e proteger os controllers de negócio com um NestJS `AuthGuard`/estratégia OIDC que valide assinatura via JWKS, emissor (`iss`), audiência (`aud`) e expiração do token. Os endpoints **GET /health/live** e **GET /health/ready** continuam públicos para probes de infraestrutura; as demais rotas de negócio e consultas recebem autenticação e autorização.
+Se o serviço passar a aceitar tráfego externo, a opção que pensei seria integrar um Identity Provider OIDC externo, como Keycloak ou Zitadel, iniciado no Docker Compose. Não criar cadastro ou senha próprios. Para chamadas de provedores, usar client credentials e proteger os controllers de negócio com um NestJS `AuthGuard`/estratégia OIDC que valide assinatura via JWKS, emissor (`iss`), audiência (`aud`) e expiração do token. Os endpoints **GET /health/live** e **GET /health/ready** continuam públicos para probes de infraestrutura; as demais rotas de negócio e consultas recebem autenticação e autorização.
 
 A identidade autenticada do token deve ser associada ao `providerId` recebido no corpo; se não corresponder, a API rejeita a chamada. Para rotas de carteira, a autorização também deve limitar quais jogadores/carteiras a identidade pode consultar ou operar. O `providerId` declarado no payload, sozinho, não autentica quem chamou.
 
