@@ -1,6 +1,5 @@
 /**
  * Esta página mantém uma janela limitada de atividades recentes do processo.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Injectable } from '@nestjs/common';
 

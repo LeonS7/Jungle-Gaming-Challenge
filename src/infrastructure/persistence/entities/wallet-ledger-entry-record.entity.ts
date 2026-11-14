@@ -1,6 +1,5 @@
 /**
  * Esta página mapeia os lançamentos imutáveis do ledger da carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { DecimalType } from '@mikro-orm/core';
 import {

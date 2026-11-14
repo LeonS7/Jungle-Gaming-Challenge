@@ -1,6 +1,5 @@
 /**
  * Esta página valida a criação HTTP de carteira e o saldo inicial decimal.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { InvalidMoneyError, Money } from '../../domain/money/money.js';
 import type { OpenWalletCommand } from '../../application/wallets/open-wallet.js';

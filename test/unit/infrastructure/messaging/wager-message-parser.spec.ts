@@ -1,6 +1,5 @@
 /**
  * Esta página valida o contrato SQS e o comando compartilhado de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import {

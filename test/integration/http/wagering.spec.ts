@@ -1,6 +1,5 @@
 /**
  * Esta página verifica consultas e operações HTTP com NestJS e PostgreSQL reais.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';

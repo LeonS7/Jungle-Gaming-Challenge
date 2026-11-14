@@ -1,6 +1,5 @@
 /**
  * Esta página classifica erros PostgreSQL compartilhados pelos adapters.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface PostgreSqlErrorMetadata {
   readonly code?: string;

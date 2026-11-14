@@ -1,6 +1,5 @@
 /**
  * Esta página testa tipos, transições e referências de transações de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { LedgerDirection } from '../../../../src/domain/ledger/wallet-ledger-entry.js';

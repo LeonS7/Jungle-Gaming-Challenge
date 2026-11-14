@@ -1,6 +1,5 @@
 /**
  * Esta página abre carteiras e monta a transação e o crédito de abertura.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { Money } from '../../domain/money/money.js';

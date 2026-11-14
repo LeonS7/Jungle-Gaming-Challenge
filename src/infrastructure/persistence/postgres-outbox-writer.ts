@@ -1,6 +1,5 @@
 /**
  * Esta página grava envelopes na outbox usando o contexto da transação PostgreSQL atual.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { EntityManager } from '@mikro-orm/postgresql';
 import type { OutboxMessageToAppend } from '../../application/outbox/integration-events.js';

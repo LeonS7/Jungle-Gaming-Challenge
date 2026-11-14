@@ -1,6 +1,5 @@
 /**
  * Esta página lista o histórico persistido de wagering com cursor estável.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type {
   WagerTransactionPosition,

@@ -1,6 +1,5 @@
 /**
  * Esta página verifica a disponibilidade de PostgreSQL e SQS para readiness.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Inject,

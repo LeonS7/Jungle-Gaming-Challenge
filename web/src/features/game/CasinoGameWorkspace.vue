@@ -1,4 +1,4 @@
-<!-- Esta página oferece a experiência de jogo Fortune Chimp usando somente a API financeira real. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página oferece a experiência de jogo Fortune Chimp usando somente a API financeira real. -->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import {

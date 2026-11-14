@@ -1,6 +1,5 @@
 /**
  * Esta página define as medições operacionais sem acoplar Application ao Prometheus.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { WagerTransactionStatus } from '../../domain/wagering/wager-transaction.js';
 

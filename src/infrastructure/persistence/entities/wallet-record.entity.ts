@@ -1,6 +1,5 @@
 /**
  * Esta página mapeia a carteira persistida para as colunas do PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { DecimalType } from '@mikro-orm/core';
 import {

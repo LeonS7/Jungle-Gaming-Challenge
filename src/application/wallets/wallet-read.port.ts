@@ -1,6 +1,5 @@
 /**
  * Esta página define as consultas de leitura disponíveis para carteiras e ledger.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { MoneyProps } from '../../domain/money/money.js';
 

@@ -1,121 +1,157 @@
-# Distributed Wagering Processor
+# Processador Distribuído de Apostas
 
-Implementação incremental do desafio técnico da Jungle Gaming. O projeto usa Bun 1.x, NestJS, TypeScript strict, PostgreSQL e SQS por LocalStack.
+Implementação do desafio **Distributed Wagering Processor**, da Jungle Gaming. O projeto demonstra como processar transações financeiras de apostas sob concorrência, mensagens repetidas e falhas de infraestrutura, mantendo PostgreSQL como autoridade para saldo e idempotência.
 
-## Pré-requisitos
+> **Escopo da interface web:** o painel em **web/** é uma ferramenta local de demonstração e testes visuais ligada à API real. Ele não implementa regras financeiras, não calcula saldos e não representa uma plataforma de cassino pronta para produção.
 
-- Bun 1.x
-- Docker com Docker Compose
+## O que está implementado
 
-## Executar localmente
+- Domínio de dinheiro decimal, carteiras, transações e ledger imutável.
+- API HTTP para carteiras, **BET**, **WIN**, **LOSS**, **REFUND**, **ROLLBACK**, consultas e reconciliação.
+- Idempotência persistida no PostgreSQL, com chave global única e rejeição de payload divergente.
+- Concorrência protegida por lock da carteira e constraints no banco; carteiras diferentes podem avançar em paralelo.
+- Atomicidade entre saldo, transação, ledger, inbox e outbox conforme o fluxo.
+- Consumidor SQS com inbox, redelivery segura, retry e DLQ; publisher da outbox com lease persistido e entrega *at-least-once*.
+- Worker para resolver transações que aguardam uma referência fora de ordem.
+- Health checks, métricas Prometheus e console local de atividade em **GET /**.
+- Painel visual com as áreas **Jogo**, **Extrato** e **Laboratório de Testes**, cenários guiados e chamadas à API real.
 
-No PowerShell:
+## Tecnologias
 
-```powershell
-Copy-Item .env.example .env
-bun install
-docker compose up -d postgres localstack
-bun run db:migrate
-bun run check
-bun test --timeout=60000
-bun run start
-```
+| Área | Tecnologia |
+|---|---|
+| Runtime, dependências e testes | Bun 1.x |
+| Linguagem | TypeScript em modo estrito |
+| API | NestJS |
+| Persistência | PostgreSQL e MikroORM |
+| Precisão monetária | decimal.js e colunas PostgreSQL NUMERIC(30,2) |
+| Mensageria local | AWS SQS via LocalStack |
+| Interface de demonstração | Vue 3, TypeScript e Vite |
+| Ambiente local | Docker Compose |
 
-`bun install` resolve as dependências e cria o `bun.lock`, que deve ser versionado junto com o projeto. Os testes de integração usam o PostgreSQL do Compose e criam um schema temporário isolado.
+## Requisitos para executar
 
-Para reverter a última migration localmente, use `bun run db:migrate:down`. Essa operação remove as tabelas criadas pela migration e seus dados; não a execute em um banco com dados que precisem ser preservados.
+- Bun 1.x. A versão usada no projeto está registrada nos arquivos package.json e nos arquivos de lock.
+- Docker Desktop em execução, com Docker Compose.
+- Portas locais disponíveis: 3000 (API), 5173 (painel), 5432 (PostgreSQL) e 4566 (LocalStack). As portas publicadas ficam no loopback.
 
-A aplicação escuta somente em `http://127.0.0.1:3000` por padrão. Os endpoints de health são:
+Confira as ferramentas no PowerShell:
 
-- `GET /health/live`: confirma que o processo responde.
-- `GET /health/ready`: confirma que PostgreSQL e a fila SQS estão acessíveis.
+    bun --version
+    docker compose version
+    docker info
 
-As credenciais em `.env.example` são somente para o ambiente local. Não use esses valores fora dele.
+## Executar o backend e a infraestrutura
 
-## Entrada HTTP de wagering
+No diretório raiz do repositório, em um terminal PowerShell:
 
-`POST /wagering/transactions` aceita `Idempotency-Key` no cabeçalho e os tipos `BET`, `WIN`, `LOSS`, `REFUND` e `ROLLBACK`. O corpo exige IDs, rodada, jogo e `money.amount` como string com exatamente duas casas decimais; campos desconhecidos são rejeitados. `REFUND` e `ROLLBACK` exigem `referenceExternalTransactionId`; `WIN` pode informar essa referência. Sem referência, um `WIN` credita a carteira; com referência ausente ou ainda não finalizada, a transação fica `PENDING_REFERENCE`, sem movimentar saldo. `LOSS` é registrada como processada e guarda o saldo observado, sem alterar a carteira nem criar lançamento no ledger.
+    Copy-Item .env.example .env
+    bun install --frozen-lockfile
+    docker compose up -d postgres localstack
+    bun run db:migrate
+    bun run start
 
-`REFUND` credita o valor de uma `BET` processada. `ROLLBACK` aplica a direção inversa de uma `BET`, `WIN` ou `REFUND` processada. Nas reversões, a referência precisa corresponder ao provedor, jogador, carteira, rodada, valor e moeda. Para `WIN` com referência, o domínio exige uma `BET` processada compatível e a mesma moeda. Uma referência inválida termina em rejeição; a mesma referência não pode ser revertida duas vezes pelo mesmo tipo de operação.
+A cópia de .env.example é necessária somente na primeira execução. Confira **docker compose ps** para acompanhar PostgreSQL e LocalStack. **bun run start** compila o backend e inicia a API em **http://127.0.0.1:3000**.
 
-O serviço calcula SHA-256 de um JSON com chaves em ordem fixa, contendo provedor, identificador externo, jogador, carteira, rodada, jogo, tipo, referência externa quando informada e dinheiro normalizado. A chave de idempotência e metadados HTTP não entram no hash. Não envie `payloadHash` no corpo.
+A raiz da API (**http://127.0.0.1:3000/**) abre o console local de atividade. Ele consulta os registros recentes do processo e não redireciona ao painel. Os registros ficam limitados aos 500 mais recentes, somem no reinício e não são compartilhados entre instâncias. Requisições HTTP são registradas sem corpo, cabeçalhos nem parâmetros; logs da aplicação também podem conter identificadores operacionais. Para consultar a API diretamente:
 
-- `200`: transação processada ou rejeitada por regra de negócio; confira `status` e `failureCode` no corpo. Saldo insuficiente em `BET` e saldo insuficiente para o débito de `REFUND`/`ROLLBACK` são respostas terminais `REJECTED`.
-- `202`: referência informada ainda não está disponível ou processada. A resposta não inclui saldo porque nenhuma movimentação ocorreu. O estado e um evento de outbox são persistidos na mesma transação PostgreSQL.
-- `400`: corpo, cabeçalho ou dinheiro inválido.
-- `404`: carteira inexistente ou que não pertence ao jogador informado.
-- `422`: moeda da operação diferente da moeda da carteira.
-- `409`: chave reutilizada com dados diferentes ou identificador externo já registrado.
-- `503`: indisponibilidade transitória conhecida do PostgreSQL.
-- `500`: falha interna inesperada, sem detalhes financeiros na resposta.
+    Invoke-RestMethod http://127.0.0.1:3000/health/live
+    Invoke-RestMethod http://127.0.0.1:3000/health/ready
 
-A rota ainda não tem autenticação. A decisão e o ponto de extensão para um provedor de identidade externo estão documentados em `ARCHITECTURE.md`.
+## Executar o painel visual
 
-`POST /wallets` cria uma carteira com `playerId` e `initialBalance` (`amount` decimal como string com duas casas e `currency` ISO-4217). Responde `201` com `id`, `playerId`, `balance` e `version`; duplicidade por jogador e moeda responde `409`. Um saldo inicial positivo cria `OPENING` e um crédito de ledger; saldo zero não cria movimento financeiro.
+Com a API e os serviços locais em execução, abra **outro** terminal PowerShell:
 
-## Consultas HTTP
+    Set-Location web
+    Copy-Item .env.example .env
+    bun install --frozen-lockfile
+    bun run dev
 
-- `GET /wallets/:walletId` retorna `id`, `playerId`, `balance` e `version` da carteira. Carteira inexistente responde `404`.
-- `GET /wallets/:walletId/ledger?cursor=...&limit=50` retorna lançamentos do mais recente para o mais antigo. O limite padrão é 50 e o máximo é 100. `nextCursor` é opaco e deve ser enviado sem alterações na próxima página; ele é vinculado à carteira e usa a data completa e o ID do lançamento para manter a paginação estável.
-- `GET /wallets/:walletId/transactions?cursor=...&limit=50` retorna o histórico persistido de transações da carteira, do mais recente para o mais antigo. O limite padrão é 50 e o máximo é 100. `nextCursor` é opaco, vinculado à carteira e permite continuar a consulta após atualizar ou fechar o navegador. A operação é somente leitura e não expõe a chave de idempotência nem o hash interno do payload.
-- `GET /wagering/transactions/:transactionId` consulta pelo ID interno da transação.
-- `GET /providers/:providerId/wagering/transactions/:externalTransactionId` consulta pela identidade externa do provedor.
+Abra **http://127.0.0.1:5173**. O painel usa o proxy local para acessar a API em 127.0.0.1:3000. A área Jogo envia operações reais; o Extrato busca o histórico persistido; o Laboratório consulta serviços e executa operações de demonstração. Cenários guiados criam carteiras e gravações permanentes no banco: não há botão de exclusão nem redefinição do ledger.
 
-As consultas retornam valores monetários como strings com duas casas decimais. O contrato da consulta paginada está em `docs/openapi.yaml`. As respostas de transação não expõem a chave de idempotência nem o hash interno do payload.
+## Executar verificações e testes
 
-`POST /wallets/:walletId/reconciliation` compara o saldo gravado com a reconstrução `créditos - débitos` do ledger imutável. A resposta contém os dois saldos, a diferença (`saldo gravado - saldo calculado`), `consistent` e `checkedEntries`. Divergências são registradas em log sem valores financeiros e incrementam `wallet_reconciliation_divergences_total`; o endpoint `GET /metrics` expõe o contador em formato Prometheus. A reconciliação não corrige dados automaticamente.
+Com Docker e os serviços PostgreSQL e LocalStack iniciados, a partir da raiz:
 
-## Estado atual
+    bun run check
+    bun run build
+    bun run test
 
-A fundação inclui configuração validada, health checks, PostgreSQL e LocalStack no Compose. O domínio contém `Money`, `Wallet`, `WagerTransaction` e `WalletLedgerEntry`. Migrations reversíveis definem unicidade, saldo não negativo, transições de estado e imutabilidade do ledger.
+A suíte usa PostgreSQL e LocalStack reais para cenários de integração, concorrência, inbox, outbox, retry e DLQ. Para executar somente as integrações:
 
-As APIs HTTP de escrita e consulta estão implementadas para abertura de carteira, `BET`, `WIN`, `LOSS`, `REFUND` e `ROLLBACK`. As consultas usam PostgreSQL e não alteram estado financeiro. A consulta de ledger usa paginação por chave `(created_at, id)`, sem `OFFSET`, para evitar repetir ou pular registros quando houver timestamps iguais.
+    bun run test:integration
 
-O processamento financeiro usa persistência PostgreSQL e outbox transacional. Cada operação bloqueia somente sua carteira com `FOR UPDATE`. O movimento de saldo, o lançamento imutável, o resultado terminal e os eventos são gravados na mesma transação SQL. Saldo insuficiente gera rejeição sem lançamento e sem débito/crédito parcial. Para `LOSS`, o serviço registra o resultado terminal e o saldo observado sem alterar a carteira nem o ledger. A chave global de idempotência e a unicidade por `(providerId, externalTransactionId)` são garantidas no banco. Repetições idempotentes devolvem o saldo histórico gravado sem duplicar eventos, e dados diferentes com a mesma chave são rejeitados.
+Para verificar o painel, em outro terminal:
 
-Os eventos `WagerTransactionProcessed`, `WagerTransactionRejected`, `WagerTransactionPendingReference` e `WalletBalanceChanged` são armazenados em `outbox_messages` como envelopes JSON versionados. Uma referência ausente ou ainda pendente leva a transação a `PENDING_REFERENCE`, sem movimentação de saldo; uma repetição retorna o mesmo estado e não duplica o evento. Um worker PostgreSQL tenta resolver referências pendentes com backoff exponencial de 1 segundo até 5 minutos e prazo total de 24 horas. Ao expirar, a transação termina como `REJECTED` com `REFERENCE_EXPIRED`. A sequência da outbox preserva o evento inicial pendente antes do resultado final e da alteração de saldo. `LOSS` não gera `WalletBalanceChanged`; abertura de carteira com saldo positivo gera os eventos de `OPENING`, e saldo inicial zero não gera evento. Um publisher separado publica a outbox em `wager-events.fifo` depois do commit financeiro.
+    Set-Location web
+    bun run check
+    bun test
+    bun run build
 
-A entrada SQS usa a fila `wager-transactions.fifo` e um consumidor que valida o mesmo contrato de wagering da API HTTP por meio do parser de comando compartilhado na Application. A inbox persiste `(consumer_name, message_id)` e o hash do corpo original; a linha da inbox, transação financeira, ledger e outbox confirmam ou revertem juntos. O consumidor apaga a mensagem da fila somente depois do commit. Redelivery com o mesmo ID e conteúdo é confirmada sem repetir efeitos; o mesmo ID com conteúdo diferente vai para a DLQ. Erros de negócio terminais são registrados na inbox e confirmados; falhas de persistência mantêm a mensagem para retry com backoff exponencial e a política de redrive da fila. Mensagens inválidas são enviadas à DLQ antes da exclusão da fila de entrada, com deduplicação pelo ID SQS de origem para preservar mensagens distintas que tenham o mesmo corpo.
+Os testes criam schemas e filas temporários e os removem ao terminar. Eles não substituem os dados da aplicação configurados em .env.
 
-O publisher da outbox reclama linhas com `FOR UPDATE SKIP LOCKED` e lease persistido em `lock_token`/`locked_until`. Publica cada envelope com o ID do evento como identificador de deduplicação e o ID da transação como grupo FIFO, preservando a ordem dos eventos daquela transação. Falhas recebem retry com backoff exponencial limitado a 60 segundos; os eventos permanecem no PostgreSQL até a publicação ser confirmada. A entrega é *at-least-once*: uma queda depois do envio e antes de gravar `published_at` pode causar redelivery, por isso o ID do evento permanece estável.
+## Contrato HTTP resumido
 
-No encerramento, o consumidor cancela long polling e aguarda a mensagem em andamento concluir ou falhar; um heartbeat estende a visibilidade durante o processamento. Há um consumidor sequencial por processo; múltiplos processos podem executar em paralelo, com o PostgreSQL mantendo a concorrência financeira por carteira. A inbox ainda não tem política de expurgo, pois apagar IDs antigos reduziria a janela de deduplicação. FIFO do SQS não é usado como garantia de consistência financeira.
+| Método e rota | Uso |
+|---|---|
+| POST /wallets | Abre carteira e, para saldo inicial positivo, registra OPENING e crédito inicial. |
+| GET /wallets/:walletId | Consulta carteira e saldo atual. |
+| GET /wallets/:walletId/ledger | Consulta ledger imutável por páginas. |
+| GET /wallets/:walletId/transactions | Consulta histórico de transações por páginas. |
+| POST /wagering/transactions | Processa BET, WIN, LOSS, REFUND ou ROLLBACK; exige Idempotency-Key. |
+| GET /wagering/transactions/:transactionId | Consulta pelo identificador interno. |
+| GET /providers/:providerId/wagering/transactions/:externalTransactionId | Consulta pela identidade externa do provedor. |
+| POST /wallets/:walletId/reconciliation | Compara saldo gravado com o saldo reconstruído do ledger. |
+| GET /health/live e GET /health/ready | Verifica processo e dependências. |
+| GET /metrics | Expõe métricas Prometheus. |
+| GET / e GET /activity?after=... | Abre o console e consulta atividade recente desta instância. |
 
-A Fase 7 acrescenta reprocessamento automático e auditável de referências fora de ordem, prazo de expiração, backoff, reconciliação HTTP do ledger e contador Prometheus para divergências. Os testes de integração verificam a concorrência do worker PostgreSQL e o contrato HTTP de reconciliação. O contador Prometheus é local por processo e reinicia com a aplicação; cada réplica deve ser coletada separadamente e agregada pelo monitoramento.
+Paginação aceita cursor e limit; o padrão é 50 registros e o máximo é 100. Valores monetários entram e saem como strings decimais com duas casas. O contrato OpenAPI em **docs/openapi.yaml** documenta o console de atividade e o histórico paginado de transações; não é uma especificação completa de todas as rotas.
 
-## Observabilidade e validação distribuída
+## Regras financeiras e decisões importantes
 
-`GET /metrics` expõe métricas Prometheus para estados de transação, repetições por idempotência, inbox ou identidade externa do provedor, retries por referência/SQS/outbox, mensagens visíveis na DLQ, conflitos de lock PostgreSQL, duração da aquisição do lock da carteira, atraso da outbox e duração do processamento financeiro. A métrica `wallet_reconciliation_divergences_total` registra divergências encontradas pela reconciliação. Os rótulos têm valores limitados; IDs, chaves e valores monetários não são usados como rótulos.
+- **BET** debita; **WIN** e **REFUND** creditam; **ROLLBACK** inverte o movimento da transação referenciada; **LOSS** registra o resultado sem alterar saldo ou ledger.
+- **REFUND** e **ROLLBACK** precisam de referência processada válida, mesmo provedor, jogador, carteira, rodada, valor e moeda. Uma referência ainda não disponível fica pendente e é reavaliada pelo worker.
+- Uma chave idêntica com os mesmos dados devolve o resultado persistido; a mesma chave com dados diferentes conflita. A constraint é global e vive no PostgreSQL, não na memória do processo nem no FIFO.
+- O lock é por carteira. Saldo, ledger, transação e outbox compartilham o mesmo commit financeiro; a inbox também participa desse commit na entrada SQS. O publisher envia somente eventos já confirmados no banco.
+- A entrega da outbox é *at-least-once*: consumidores de eventos precisam tratar o mesmo eventId de forma idempotente.
+- Reconciliação informa diferenças, mas não corrige automaticamente registros financeiros.
 
-As métricas são locais a cada processo e reiniciam após reinício. Em várias réplicas, o coletor deve consultar cada instância e agregar as séries. A contagem da DLQ usa o atributo aproximado do SQS e é atualizada a cada 10 segundos. O histograma de lock mede a duração total da consulta PostgreSQL `SELECT ... FOR UPDATE`, incluindo a ida e volta entre processo e banco; não representa apenas o tempo de espera no servidor PostgreSQL. O atraso da outbox mede a idade do evento não publicado mais antigo.
+## Navegação pelo código
 
-Os logs estruturados dos caminhos HTTP, SQS e workers registram contexto de correlação e identificadores operacionais, sem valores financeiros. Liveness e readiness ficam separados: readiness verifica PostgreSQL e as filas SQS configuradas.
+    src/
+      domain/          regras e modelos financeiros sem dependências de infraestrutura
+      application/     casos de uso e portas para persistência e observabilidade
+      infrastructure/ PostgreSQL, migrations, SQS, workers e métricas
+      presentation/   controladores HTTP, validação e console de atividade
+      config/          leitura e validação da configuração
+      main.ts          inicialização do NestJS
+    test/
+      unit/            regras de domínio e utilitários isolados
+      integration/     PostgreSQL, LocalStack, HTTP e processos concorrentes
+    web/
+      src/api/         cliente HTTP do painel
+      src/features/    telas de Jogo, Extrato, Carteiras e Laboratório
+      test/            contratos do cliente e regras locais de apresentação
+    docker/            configuração de inicialização das filas do LocalStack
+    docs/              contrato OpenAPI disponível
 
-O teste distribuído cria três processos Bun independentes e um schema PostgreSQL temporário isolado. Ele envia 50 solicitações idênticas pelas três instâncias, verifica um único débito e saldo igual à soma do ledger, encerra os processos, inicia novas instâncias e verifica a recuperação de uma referência pendente e a ordem dos eventos da outbox. Esse cenário valida concorrência e recuperação em execução local; não é um teste de carga nem mede limites de throughput.
+As migrations são versionadas em **src/infrastructure/persistence/migrations**. Para aplicar alterações de schema, use **bun run db:migrate**. **bun run db:migrate:down** reverte a última migration e remove os objetos e dados abrangidos por ela; use somente em um banco descartável ou depois de proteger os dados necessários.
 
-## Painel web local — Fase 10
+## Limites e segurança
 
-O painel é organizado nas áreas **Jogo**, **Extrato** e **Laboratório de Testes**. Em Jogo, a mesa **Fortune Chimp** mantém o saldo retornado pela API em destaque. O usuário envia uma BET e só pode escolher GANHAR ou PERDER depois que a API confirmar `PROCESSED`; WIN referencia a BET e LOSS envia o mesmo valor da aposta sem movimentação adicional. Após criar ou selecionar uma carteira, a interface a marca como ativa, consulta o saldo e permite abrir o extrato. Extrato consulta transações persistidas e pode apresentá-las por transação ou agrupadas por jogo e rodada. O Laboratório reúne saúde e métricas da API, ledger, reconciliação, consulta técnica, idempotência e uma área de reversão que escolhe referências no histórico paginado. Em REFUND e ROLLBACK, a tela copia do registro da API o identificador externo e o valor decimal original; o backend valida e executa a reversão.
+- A aplicação não implementa autenticação. A API, o banco, o LocalStack e o servidor de desenvolvimento ficam limitados ao loopback para uso local. Outros processos da mesma máquina ainda podem acessar a API; esse arranjo não é adequado para exposição em rede.
+- Não há autenticação artesanal. Para uma implantação real, integrar um provedor de identidade externo e aplicar autorização aos endpoints antes de abrir acesso de rede.
+- O console de atividade e as métricas são locais à instância. O console mantém no máximo 500 entradas em memória; métricas também reiniciam com o processo.
+- LocalStack é a dependência de SQS usada na execução local e nos testes; a configuração de produção da AWS não faz parte deste projeto.
+- Os testes concorrentes são evidências de correção dos cenários exercitados, não ensaios de carga nem metas de throughput.
 
-Com backend, PostgreSQL e LocalStack em execução, abra outro terminal PowerShell:
+## Autoria e ferramentas de desenvolvimento
 
-```powershell
-Set-Location web
-Copy-Item .env.example .env
-bun install
-bun run dev
-```
+O projeto foi conduzido por **Leonardo de Souza da Luz**. Codex foi utilizado de forma consciente como ferramenta auxiliar para análise, revisão, documentação e aceleração de tarefas de desenvolvimento. As decisões de domínio e as funcionalidades financeiras centrais do desafio são de autoria do responsável pelo projeto; o resultado deve ser apresentado com compreensão das escolhas e das evidências registradas.
 
-Abra `http://127.0.0.1:5173` para usar o painel de jogo. A raiz da API em `http://127.0.0.1:3000` mostra um console local com requisições HTTP e eventos registrados pela aplicação; `GET /activity?after=...` consulta as entradas recentes em JSON. O console não redireciona para o painel. Os registros HTTP não guardam corpos, cabeçalhos ou parâmetros; o histórico fica limitado ao processo atual, é apagado no reinício e não é agregado entre instâncias. Para acompanhar a API por completo em implantação distribuída, use a saída do processo e uma plataforma centralizada de logs. O cliente usa o prefixo `/api` definido por `VITE_API_BASE_URL`; o proxy de desenvolvimento encaminha esse prefixo para `http://127.0.0.1:3000`, evitando dependência de CORS na execução local. Para apontar o proxy a outro backend, altere `VITE_API_PROXY_TARGET` em `web/.env`.
+## Arquivos de referência
 
-Para validar o pacote do painel, dentro de `web/`, execute `bun run check`, `bun test` e `bun run build`. Operações de gravação pedem confirmação no navegador. Os ensaios do Laboratório permitem repetir exatamente a última solicitação com a mesma chave e testar o conflito usando a mesma chave com conteúdo alterado; a garantia vem do armazenamento persistente da API, não do estado do navegador. Uma solicitação de jogo ou reversão cuja resposta seja incerta guarda temporariamente o payload e a chave originais em `localStorage`, para que o retry após timeout ou recarga envie exatamente a mesma solicitação. Esse dado local é apenas conveniência; o PostgreSQL mantém a garantia de idempotência. Referências pendentes são consultadas manualmente pelo ID interno retornado pela API.
-
-Os cenários guiados criam uma carteira nova de R$ 100,00 por execução e chamam a API real: duas BETs simultâneas de R$ 80,00, BET/REFUND/ROLLBACK de R$ 20,00 e WIN recebido antes da BET de referência. No teste concorrente, o painel consulta as duas transações, todas as páginas do ledger, o saldo e a reconciliação; só confirma o aceite se encontrar uma BET processada, uma rejeitada por saldo insuficiente, um único débito de R$ 80,00 e saldo consistente de R$ 20,00. As operações ficam gravadas no PostgreSQL local e não há exclusão nem reset de ledger. A conclusão do WIN pendente é feita pelo worker de referências fora de ordem, portanto a tela não promete resolução imediata.
-
-O navegador guarda o identificador da carteira selecionada e, enquanto necessário, um payload incerto junto da chave de idempotência para retry. Ao reabrir o painel, consulta a carteira pela API e o Extrato busca novamente as páginas de transações no PostgreSQL; saldos, operações e histórico não são persistidos no armazenamento local do navegador. O limite da consulta e o contrato estão descritos em `docs/openapi.yaml`.
-
-API, painel e portas publicadas pelo Docker Compose ficam vinculados ao loopback (`127.0.0.1`). Não há autenticação por usuário: outros processos executados na mesma máquina podem chamar a API. Essa fronteira atende à demonstração local, mas não protege uma implantação em rede; não altere os vínculos para interfaces públicas nem exponha o serviço sem integrar autenticação respaldada por um provedor de identidade e controles de rede apropriados.
-
-Verificações do backend: `bun run check`, `bun run build`, `bun test --timeout=60000` e `bun run test:integration`. A suíte requer PostgreSQL e LocalStack SQS acessíveis e cobre migrations, constraints, concorrência, idempotência, eventos, reversões, inbox, redelivery, DLQ e rollback financeiro.
-
-O teste `bun test --timeout=60000 test/integration/http/wagering.spec.ts` também executa o aceite HTTP com PostgreSQL real: cria uma carteira dedicada pela API, envia duas BETs de `80.00` em paralelo e consulta transações, saldo, ledger e reconciliação.
+- **ARCHITECTURE.md**: decisões, fluxos, invariantes e trade-offs.
+- **CHALLENGE.md**: enunciado técnico usado na avaliação.
+- **docs/openapi.yaml**: parte documentada do contrato HTTP.

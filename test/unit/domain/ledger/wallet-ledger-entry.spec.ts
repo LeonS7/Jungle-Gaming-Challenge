@@ -1,6 +1,5 @@
 /**
  * Esta página testa a aritmética, integridade e imutabilidade do ledger.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { LedgerDirection, WalletLedgerEntry } from '../../../../src/domain/ledger/wallet-ledger-entry.js';

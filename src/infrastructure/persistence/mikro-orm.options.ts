@@ -1,6 +1,5 @@
 /**
  * Esta página centraliza o mapeamento MikroORM usado pela aplicação e migrations.
- * Assinatura: Leonardo de Souza da Luz
  */
 import 'reflect-metadata';
 import { Migrator } from '@mikro-orm/migrations';

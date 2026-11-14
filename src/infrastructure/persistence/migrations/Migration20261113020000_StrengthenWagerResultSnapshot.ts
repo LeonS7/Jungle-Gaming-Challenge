@@ -1,6 +1,5 @@
 /**
  * Esta página reforça a constraint que mantém completo o snapshot de resposta.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

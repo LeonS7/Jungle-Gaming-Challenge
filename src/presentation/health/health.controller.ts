@@ -1,6 +1,5 @@
 /**
  * Esta página expõe endpoints de liveness e readiness sem autenticação.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Controller, Get } from '@nestjs/common';
 import { HealthService } from './health.service.js';

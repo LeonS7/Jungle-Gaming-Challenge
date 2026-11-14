@@ -1,6 +1,5 @@
 /**
  * Esta página define o lançamento imutável do ledger e valida sua aritmética.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Money } from '../money/money.js';
 

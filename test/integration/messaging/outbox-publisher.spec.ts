@@ -1,6 +1,5 @@
 /**
  * Esta página valida publicação, retry, concorrência e recuperação da outbox.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import {

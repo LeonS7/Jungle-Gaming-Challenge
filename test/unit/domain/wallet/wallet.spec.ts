@@ -1,6 +1,5 @@
 /**
  * Esta página testa abertura, movimentações e invariantes da carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { Money } from '../../../../src/domain/money/money.js';

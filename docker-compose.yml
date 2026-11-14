@@ -1,5 +1,4 @@
 # Esta página define os serviços locais PostgreSQL e LocalStack usados no projeto.
-# Assinatura: Leonardo de Souza da Luz
 services:
   postgres:
     image: postgres:17-alpine

@@ -1,6 +1,5 @@
 /**
  * Esta página persiste wagering, referências e reversões em transação PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM, type EntityManager } from '@mikro-orm/postgresql';
 import { Money } from '../../domain/money/money.js';

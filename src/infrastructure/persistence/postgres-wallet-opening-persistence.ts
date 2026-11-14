@@ -1,6 +1,5 @@
 /**
  * Esta página grava Wallet e registros de abertura na mesma transação PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM, type EntityManager } from '@mikro-orm/postgresql';
 import { PersistenceUnavailableError } from '../../application/shared/persistence-unavailable.error.js';

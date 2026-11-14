@@ -1,6 +1,5 @@
 /**
  * Esta página envia envelopes imutáveis à fila FIFO de eventos financeiros.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   GetQueueUrlCommand,

@@ -1,5 +1,4 @@
 """Esta página cria as filas FIFO e a fila de mensagens não processadas no LocalStack.
-Assinatura: Leonardo de Souza da Luz
 """
 import json
 import os

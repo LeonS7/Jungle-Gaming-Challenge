@@ -1,6 +1,5 @@
 /**
  * Esta página verifica migrations e constraints contra um PostgreSQL real.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import { expect, test } from 'bun:test';

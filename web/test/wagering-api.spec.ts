@@ -1,5 +1,4 @@
 /** Esta página verifica os contratos HTTP do painel sem executar regras financeiras locais.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { ApiRequestError, createWageringApi, type WagerRequest } from '../src/api/wagering-api';

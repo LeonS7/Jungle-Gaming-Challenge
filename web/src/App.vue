@@ -1,4 +1,4 @@
-<!-- Esta página organiza Jogo, Extrato e Laboratório e recupera a carteira salva pela API. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página organiza Jogo, Extrato e Laboratório e recupera a carteira salva pela API. -->
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import WalletWorkspace from './features/wallets/WalletWorkspace.vue';

@@ -1,6 +1,5 @@
 /**
  * Esta página verifica referências pendentes e resolve ou agenda novas tentativas.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Injectable,

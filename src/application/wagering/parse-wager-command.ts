@@ -1,6 +1,5 @@
 /**
  * Esta página valida dados de wagering e monta o comando da aplicação.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { InvalidMoneyError, Money } from '../../domain/money/money.js';
 import { WagerTransactionKind } from '../../domain/wagering/wager-transaction.js';

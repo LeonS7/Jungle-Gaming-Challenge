@@ -1,4 +1,4 @@
-/** Esta página verifica regras de preparação e retry das ferramentas de laboratório. Assinatura: Leonardo de Souza da Luz */
+/** Esta página verifica regras de preparação e retry das ferramentas de laboratório. */
 import { describe, expect, test } from 'bun:test';
 import type { LedgerEntryView, ReconciliationView, WalletView, WagerTransactionView } from '../src/api/wagering-api';
 import {

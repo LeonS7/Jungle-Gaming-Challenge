@@ -1,6 +1,5 @@
 /**
  * Esta página representa valores monetários decimais e valida suas operações.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Decimal } from 'decimal.js';
 

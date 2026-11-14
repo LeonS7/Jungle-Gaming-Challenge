@@ -1,6 +1,5 @@
 /**
  * Esta página consulta uma carteira sem alterar seu estado financeiro.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { WalletReadModel, WalletReadPort } from './wallet-read.port.js';
 

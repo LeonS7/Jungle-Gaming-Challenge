@@ -1,4 +1,4 @@
-/** Esta página garante que a formatação usada no painel não interrompa a renderização. Assinatura: Leonardo de Souza da Luz */
+/** Esta página garante que a formatação usada no painel não interrompa a renderização. */
 import { expect, test } from 'bun:test';
 import { formatTimestamp } from '../src/features/dashboard/format-timestamp';
 

@@ -1,6 +1,5 @@
 /**
  * Esta página consulta uma transação por ID interno ou por identidade do provedor.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type {
   WagerReadPort,

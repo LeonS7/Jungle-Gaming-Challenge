@@ -1,6 +1,5 @@
 /**
  * Esta página compara o saldo persistido com a soma exata do ledger da carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { WalletNotFoundError } from './get-wallet.js';
 import type {

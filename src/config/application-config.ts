@@ -1,6 +1,5 @@
 /**
  * Esta página carrega e valida a configuração necessária antes da inicialização.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface ApplicationConfig {
   readonly appPort: number;

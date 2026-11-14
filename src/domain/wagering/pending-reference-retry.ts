@@ -1,6 +1,5 @@
 /**
  * Esta página aplica backoff e TTL às referências de wagering fora de ordem.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface PendingReferenceRetryState {
   readonly attempts: number;

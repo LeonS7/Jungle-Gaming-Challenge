@@ -1,6 +1,5 @@
 /**
  * Esta página verifica o backoff, o TTL e os estados da referência pendente.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import {

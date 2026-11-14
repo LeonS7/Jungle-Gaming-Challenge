@@ -1,6 +1,5 @@
 /**
  * Esta página carrega as configurações e inicia o servidor NestJS.
- * Assinatura: Leonardo de Souza da Luz
  */
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';

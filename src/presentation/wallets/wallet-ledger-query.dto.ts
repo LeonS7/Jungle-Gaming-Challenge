@@ -1,6 +1,5 @@
 /**
  * Esta página valida cursor e limite da consulta paginada do ledger.
- * Assinatura: Leonardo de Souza da Luz
  */
 export class InvalidWalletLedgerQueryError extends Error {
   constructor(message: string) {

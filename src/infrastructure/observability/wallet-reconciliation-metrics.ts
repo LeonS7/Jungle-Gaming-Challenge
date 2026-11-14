@@ -1,6 +1,5 @@
 /**
  * Esta página mantém e expõe a métrica operacional de divergências de reconciliação.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { WalletReconciliationMetricsPort } from '../../application/wallets/wallet-reconciliation.port.js';
 

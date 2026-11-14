@@ -1,6 +1,5 @@
 /**
  * Esta página processa wagering, referências, reversões e idempotência em transações.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import { Money } from '../../domain/money/money.js';

@@ -1,5 +1,4 @@
 /** Esta página consulta saúde e métricas pela API HTTP do backend.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { parseDashboardMetrics } from '../features/dashboard/dashboard-metrics';
 

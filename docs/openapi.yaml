@@ -1,5 +1,4 @@
 # Esta página documenta o console de atividade e a consulta paginada do histórico.
-# Assinatura: Leonardo de Souza da Luz
 openapi: 3.1.0
 info:
   title: API de wagering distribuído

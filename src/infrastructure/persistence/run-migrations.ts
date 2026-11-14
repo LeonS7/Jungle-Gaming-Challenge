@@ -1,6 +1,5 @@
 /**
  * Esta página oferece comandos explícitos para aplicar ou reverter uma migration.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM } from '@mikro-orm/postgresql';
 import { loadApplicationConfig } from '../../config/application-config.js';

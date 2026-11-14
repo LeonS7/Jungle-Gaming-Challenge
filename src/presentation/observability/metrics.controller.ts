@@ -1,6 +1,5 @@
 /**
  * Esta página expõe as métricas operacionais em formato textual Prometheus.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Controller, Get, Header } from '@nestjs/common';
 import { WalletReconciliationMetrics } from '../../infrastructure/observability/wallet-reconciliation-metrics.js';

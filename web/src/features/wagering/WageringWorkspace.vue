@@ -1,4 +1,4 @@
-<!-- Esta página envia jogadas ou apresenta testes técnicos de wagering pela API real. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página envia jogadas ou apresenta testes técnicos de wagering pela API real. -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {

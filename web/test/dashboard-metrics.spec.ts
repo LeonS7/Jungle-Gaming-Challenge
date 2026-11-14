@@ -1,5 +1,4 @@
 /** Esta página testa a leitura de métricas do dashboard sem tratar valores como dinheiro.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { parseDashboardMetrics } from '../src/features/dashboard/dashboard-metrics';

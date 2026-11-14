@@ -1,6 +1,5 @@
 /**
  * Esta página executa o publisher da outbox até o encerramento gracioso.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Injectable,

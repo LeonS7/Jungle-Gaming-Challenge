@@ -1,6 +1,5 @@
 /**
  * Esta página consulta o ledger com paginação por cursor estável e opaco.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type {
   WalletLedgerPosition,

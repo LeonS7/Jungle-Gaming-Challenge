@@ -1,6 +1,5 @@
 /**
  * Esta página define a porta transacional para processar operações de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Money } from '../../domain/money/money.js';
 import { InboxMessage } from '../../domain/messaging/inbox-message.js';

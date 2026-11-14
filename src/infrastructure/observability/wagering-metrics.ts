@@ -1,6 +1,5 @@
 /**
  * Esta página agrega contadores, histogramas e gauges operacionais por processo.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type {
   DuplicateMetricSource,

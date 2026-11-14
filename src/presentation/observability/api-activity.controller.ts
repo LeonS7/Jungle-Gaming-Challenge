@@ -1,6 +1,5 @@
 /**
  * Esta página serve o console local e a consulta somente leitura das atividades.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   BadRequestException,

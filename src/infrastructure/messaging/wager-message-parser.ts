@@ -1,6 +1,5 @@
 /**
  * Esta página valida mensagens recebidas e monta o comando compartilhado de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { createHash } from 'node:crypto';
 import type {

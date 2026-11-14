@@ -1,5 +1,4 @@
 /** Esta página interpreta apenas as métricas operacionais fixas do backend.
- * Assinatura: Leonardo de Souza da Luz
  */
 export const TRANSACTION_STATUSES = [
   { key: 'PROCESSED', label: 'Processadas' },

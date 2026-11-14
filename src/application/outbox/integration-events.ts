@@ -1,6 +1,5 @@
 /**
  * Esta página define envelopes versionados e os eventos financeiros enviados à outbox.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { MoneyProps } from '../../domain/money/money.js';
 import { LedgerDirection } from '../../domain/ledger/wallet-ledger-entry.js';

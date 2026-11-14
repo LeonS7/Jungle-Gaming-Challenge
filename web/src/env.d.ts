@@ -1,5 +1,4 @@
 /** Esta página declara os tipos das variáveis de ambiente do Vite.
- * Assinatura: Leonardo de Souza da Luz
  */
 /// <reference types="vite/client" />
 

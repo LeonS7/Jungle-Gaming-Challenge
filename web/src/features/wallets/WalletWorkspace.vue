@@ -1,4 +1,4 @@
-<!-- Esta página apresenta abertura de carteira no jogo ou ledger e reconciliação no laboratório. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página apresenta abertura de carteira no jogo ou ledger e reconciliação no laboratório. -->
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { ApiRequestError, wageringApi, type LedgerEntryView, type ReconciliationView, type WalletView } from '../../api/wagering-api';

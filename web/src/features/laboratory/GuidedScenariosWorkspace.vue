@@ -1,4 +1,4 @@
-<!-- Esta página executa cenários guiados contra a API real, sem simular efeitos financeiros no navegador. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página executa cenários guiados contra a API real, sem simular efeitos financeiros no navegador. -->
 <script setup lang="ts">
 import { ref } from 'vue';
 import {

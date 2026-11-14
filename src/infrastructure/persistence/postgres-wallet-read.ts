@@ -1,6 +1,5 @@
 /**
  * Esta página lê carteiras e páginas imutáveis do ledger no PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM } from '@mikro-orm/postgresql';
 import { Money } from '../../domain/money/money.js';

@@ -1,6 +1,5 @@
 /**
  * Esta página define as portas de leitura e métrica da reconciliação de carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface WalletReconciliationSnapshot {
   readonly walletId: string;

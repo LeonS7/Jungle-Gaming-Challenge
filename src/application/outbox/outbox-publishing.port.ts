@@ -1,6 +1,5 @@
 /**
  * Esta página define as portas de claim PostgreSQL e publicação de eventos.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface ClaimedOutboxMessage {
   readonly id: string;

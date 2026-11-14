@@ -1,5 +1,4 @@
 /** Esta página testa a persistência local do identificador de carteira, sem guardar estado financeiro.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import {

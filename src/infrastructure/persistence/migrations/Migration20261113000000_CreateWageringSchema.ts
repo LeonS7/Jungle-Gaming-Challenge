@@ -1,6 +1,5 @@
 /**
  * Esta página cria e reverte o schema financeiro com constraints e gatilhos.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

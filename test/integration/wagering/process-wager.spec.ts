@@ -1,6 +1,5 @@
 /**
  * Esta página valida operações, reversões e concorrência com PostgreSQL real.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import { expect, test } from 'bun:test';
@@ -492,6 +491,85 @@ test('a chave global resolve a corrida entre carteiras diferentes', async () => 
     expect(wagerRows).toHaveLength(1);
     expect(walletRows.filter((row) => row.balance === '90.00')).toHaveLength(1);
     expect(walletRows.filter((row) => row.balance === '100.00')).toHaveLength(1);
+  });
+});
+
+test('o lock de uma carteira não bloqueia operações de outra carteira', async () => {
+  await withPersistence(async ({ orm, schema, persistence, playerId, walletId }) => {
+    const otherWalletId = randomUUID();
+    const otherPlayerId = `jogador-${randomUUID()}`;
+    await seedWallet(orm, schema, otherWalletId, otherPlayerId);
+
+    let signalLockAcquired!: () => void;
+    let releaseWalletLock!: () => void;
+    const lockAcquired = new Promise<void>((resolve) => {
+      signalLockAcquired = resolve;
+    });
+    const holdLock = new Promise<void>((resolve) => {
+      releaseWalletLock = resolve;
+    });
+    const lockOwner = orm.em.transactional(async (entityManager) => {
+      await executeInTransaction(
+        entityManager,
+        `select "id" from ${table(schema, 'wallets')} where "id" = ? for update`,
+        [walletId],
+      );
+      signalLockAcquired();
+      await holdLock;
+    });
+    await lockAcquired;
+
+    const processOtherWallet = new ProcessWager(persistence).execute(
+      createWager(otherPlayerId, otherWalletId, {
+        externalTransactionId: 'aposta-carteira-independente',
+        idempotencyKey: 'chave-carteira-independente',
+        payloadHash: 'hash-carteira-independente',
+      }),
+    );
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let result: Awaited<typeof processOtherWallet> | undefined;
+    let operationFailed = false;
+    let operationError: unknown;
+
+    try {
+      result = await Promise.race([
+        processOtherWallet,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('A operação independente aguardou o lock de outra carteira.')),
+            2000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      operationFailed = true;
+      operationError = error;
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      releaseWalletLock();
+    }
+
+    await lockOwner;
+    if (operationFailed) {
+      await processOtherWallet.catch(() => undefined);
+      throw operationError;
+    }
+    if (!result) {
+      throw new Error('A operação da carteira independente não retornou resultado.');
+    }
+    expect(result.status).toBe(WagerTransactionStatus.Processed);
+    expect(result.balance?.toJSON().amount).toBe('90.00');
+
+    const walletRows = await orm.em.getConnection().execute(
+      `select "id", "balance"::text as "balance" from ${table(schema, 'wallets')}
+       where "id" in (?, ?) order by "id"`,
+      [walletId, otherWalletId],
+    );
+    expect(walletRows).toHaveLength(2);
+    expect(walletRows.find((row) => row.id === walletId)?.balance).toBe('100.00');
+    expect(walletRows.find((row) => row.id === otherWalletId)?.balance).toBe('90.00');
   });
 });
 

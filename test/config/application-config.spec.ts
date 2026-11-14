@@ -1,6 +1,5 @@
 /**
  * Esta página testa a validação das configurações da aplicação.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { loadApplicationConfig } from '../../src/config/application-config.js';

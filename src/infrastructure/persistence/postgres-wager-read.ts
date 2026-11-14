@@ -1,6 +1,5 @@
 /**
  * Esta página consulta transações por ID interno ou chave externa do provedor.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM } from '@mikro-orm/postgresql';
 import { Money } from '../../domain/money/money.js';

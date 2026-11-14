@@ -1,6 +1,5 @@
 /**
  * Esta página valida concorrência, métricas e recuperação em três processos Bun reais.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';

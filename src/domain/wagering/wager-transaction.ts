@@ -1,6 +1,5 @@
 /**
  * Esta página modela transações de wagering, estados e regras de referência.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Money } from '../money/money.js';
 import { LedgerDirection } from '../ledger/wallet-ledger-entry.js';

@@ -1,6 +1,5 @@
 /**
  * Esta página verifica a exposição Prometheus e os limites de cardinalidade das métricas.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import { WageringMetrics } from '../../../../src/infrastructure/observability/wagering-metrics.js';

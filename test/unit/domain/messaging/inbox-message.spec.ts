@@ -1,6 +1,5 @@
 /**
  * Esta página verifica identidade, imutabilidade temporal e transições da inbox.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import {

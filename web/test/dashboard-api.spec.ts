@@ -1,5 +1,4 @@
 /** Esta página verifica que o painel conclua a leitura dos estados da API.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import { loadDashboardSnapshot } from '../src/api/dashboard-api';

@@ -1,4 +1,4 @@
-/* Esta página define os estilos responsivos das áreas do painel e seus componentes. Assinatura: Leonardo de Souza da Luz */
+/* Esta página define os estilos responsivos das áreas do painel e seus componentes. */
 :root {
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #edf0ff;
@@ -292,7 +292,7 @@ h2 { margin: 0; color: #25362d; font-size: 15px; font-weight: 700; letter-spacin
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
 
-/* Abaixo, a superfície unifica a experiência de cassino e preserva o laboratório técnico. Assinatura: Leonardo de Souza da Luz */
+/* Abaixo, a superfície unifica a experiência de cassino e preserva o laboratório técnico. */
 body { background: radial-gradient(circle at 70% -10%, #2a1a54 0, transparent 35%), #090b1b; }
 .workspace-card, .activity-panel, .health-card, .empty-panel, .operation-stat { border-color: #29304b; color: #e8eaff; background: #13182f; box-shadow: 0 14px 32px #03040d55; }
 .workspace-card h2, .health-card h3, .section-heading h2, .empty-panel strong, .operation-stat strong { color: #f3f4ff; }

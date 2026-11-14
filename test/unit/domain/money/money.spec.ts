@@ -1,6 +1,5 @@
 /**
  * Esta página testa validações, aritmética decimal e imutabilidade de Money.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { describe, expect, test } from 'bun:test';
 import {

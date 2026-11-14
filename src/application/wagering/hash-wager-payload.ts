@@ -1,6 +1,5 @@
 /**
  * Esta página calcula um hash estável dos dados de negócio de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { createHash } from 'node:crypto';
 import type { MoneyProps } from '../../domain/money/money.js';

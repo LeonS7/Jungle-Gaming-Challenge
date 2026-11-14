@@ -1,6 +1,5 @@
 /**
  * Esta página expõe criação e consultas de carteira com respostas HTTP estáveis.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Body,

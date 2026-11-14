@@ -1,6 +1,5 @@
 /**
  * Esta página define a persistência atômica da abertura de uma carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Wallet } from '../../domain/wallet/wallet.js';
 import { WagerTransaction } from '../../domain/wagering/wager-transaction.js';

@@ -1,6 +1,5 @@
 /**
  * Esta página reconstitui o saldo por soma NUMERIC e lê o saldo materializado no PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { MikroORM } from '@mikro-orm/postgresql';
 import { PersistenceUnavailableError } from '../../application/shared/persistence-unavailable.error.js';

@@ -1,6 +1,5 @@
 /**
  * Esta página reclama eventos com lease e atualiza entrega no PostgreSQL.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import { MikroORM, type EntityManager } from '@mikro-orm/postgresql';

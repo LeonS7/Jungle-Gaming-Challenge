@@ -1,6 +1,5 @@
 /**
  * Esta página cria e reverte o registro durável de mensagens consumidas.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

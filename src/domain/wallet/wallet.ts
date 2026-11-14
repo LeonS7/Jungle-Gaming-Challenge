@@ -1,6 +1,5 @@
 /**
  * Esta página define a carteira, suas regras de saldo e os lançamentos gerados.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Money } from '../money/money.js';
 import {

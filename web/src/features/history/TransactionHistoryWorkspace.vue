@@ -1,4 +1,4 @@
-<!-- Esta página consulta transações e rodadas persistidas pela API. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página consulta transações e rodadas persistidas pela API. -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {

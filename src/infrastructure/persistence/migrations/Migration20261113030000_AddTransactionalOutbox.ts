@@ -1,6 +1,5 @@
 /**
  * Esta página cria uma outbox reversível com payload imutável e estado de entrega.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

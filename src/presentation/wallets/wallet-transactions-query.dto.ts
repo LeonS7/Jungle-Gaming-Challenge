@@ -1,6 +1,5 @@
 /**
  * Esta página valida cursor e limite da consulta do histórico da carteira.
- * Assinatura: Leonardo de Souza da Luz
  */
 export class InvalidWalletTransactionsQueryError extends Error {
   constructor(message: string) {

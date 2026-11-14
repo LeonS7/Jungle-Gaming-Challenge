@@ -1,4 +1,4 @@
-/** Este módulo prepara reversões usando apenas transações persistidas pela API e guarda a solicitação incerta para retry idêntico. Assinatura: Leonardo de Souza da Luz */
+/** Este módulo prepara reversões usando apenas transações persistidas pela API e guarda a solicitação incerta para retry idêntico. */
 import type {
   LedgerEntryView,
   ReconciliationView,

@@ -2,7 +2,6 @@
  * Esta página mantém os contratos HTTP usados por carteira, jogo e histórico.
  * Valores monetários trafegam como strings decimais; a API continua responsável
  * pelas regras, pela idempotência e por persistir as operações.
- * Assinatura: Leonardo de Souza da Luz
  */
 const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || '/api';
 type ApiFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

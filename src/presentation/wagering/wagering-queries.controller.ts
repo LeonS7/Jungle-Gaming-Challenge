@@ -1,6 +1,5 @@
 /**
  * Esta página expõe consultas HTTP de transações por ID interno ou provedor.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Controller,

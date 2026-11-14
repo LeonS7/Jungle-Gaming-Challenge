@@ -1,6 +1,5 @@
 /**
  * Esta página expõe operações de wagering por HTTP e traduz erros em respostas estáveis.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   Body,

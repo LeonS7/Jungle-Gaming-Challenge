@@ -1,4 +1,4 @@
-<!-- Esta página usa o histórico persistido para preparar reversões e consultar referências pendentes pela API. Assinatura: Leonardo de Souza da Luz -->
+<!-- Esta página usa o histórico persistido para preparar reversões e consultar referências pendentes pela API. -->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import {

@@ -1,6 +1,5 @@
 /**
  * Esta página monta o módulo NestJS e conecta o mapeamento MikroORM da aplicação.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';

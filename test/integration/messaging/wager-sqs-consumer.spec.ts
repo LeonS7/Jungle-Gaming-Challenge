@@ -1,10 +1,10 @@
 /**
  * Esta página valida recebimento, inbox, ack e DLQ com SQS LocalStack real.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { randomUUID } from 'node:crypto';
 import {
   CreateQueueCommand,
+  ChangeMessageVisibilityCommand,
   DeleteMessageCommand,
   DeleteQueueCommand,
   GetQueueAttributesCommand,
@@ -20,6 +20,7 @@ import { loadApplicationConfig } from '../../../src/config/application-config.js
 import { createMikroOrmOptions } from '../../../src/infrastructure/persistence/mikro-orm.options.js';
 import { PostgresWagerPersistence } from '../../../src/infrastructure/persistence/postgres-wager-persistence.js';
 import { WagerSqsConsumer } from '../../../src/infrastructure/messaging/wager-sqs-consumer.js';
+import { parseWagerQueueMessage } from '../../../src/infrastructure/messaging/wager-message-parser.js';
 import { WageringMetrics } from '../../../src/infrastructure/observability/wagering-metrics.js';
 
 function table(schema: string, name: string): string {
@@ -97,7 +98,7 @@ async function waitFor(
   throw new Error(`Tempo esgotado aguardando ${description}.`);
 }
 
-test('consumidor SQS usa inbox, espera commit, confirma redelivery e envia payload inválido à DLQ', async () => {
+test('redelivery após commit sem ack não duplica e consumidor trata retry e DLQ', async () => {
   const baseConfig = loadApplicationConfig();
   const suffix = randomUUID().replaceAll('-', '');
   const schema = `teste_sqs_${suffix}`;
@@ -166,16 +167,6 @@ test('consumidor SQS usa inbox, espera commit, confirma redelivery e envia paylo
       throw new Error('LocalStack não retornou a URL da fila de teste.');
     }
 
-    consumer = new WagerSqsConsumer(
-      config,
-      new ProcessWager(
-        new PostgresWagerPersistence(orm, schema, metrics),
-        metrics,
-      ),
-      metrics,
-    );
-    consumer.onModuleInit();
-
     const messageBody = JSON.stringify({
       messageId: `mensagem-${suffix}`,
       type: 'WagerTransactionRequested',
@@ -199,6 +190,40 @@ test('consumidor SQS usa inbox, espera commit, confirma redelivery e envia paylo
       MessageDeduplicationId: `primeiro-${suffix}`,
     }));
 
+    const firstDelivery = await sqs.send(new ReceiveMessageCommand({
+      QueueUrl: sourceQueueUrl,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: 1,
+      VisibilityTimeout: 30,
+    }));
+    const unacknowledgedMessage = firstDelivery.Messages?.[0];
+    if (!unacknowledgedMessage?.Body || !unacknowledgedMessage.ReceiptHandle) {
+      throw new Error('A primeira entrega SQS não trouxe corpo e receipt handle.');
+    }
+
+    // Simula a queda do consumidor depois do commit: a mensagem permanece sem ACK.
+    const parsedFirstDelivery = parseWagerQueueMessage(unacknowledgedMessage.Body);
+    const firstCommit = await new ProcessWager(
+      new PostgresWagerPersistence(orm, schema, metrics),
+      metrics,
+    ).executeFromInbox(parsedFirstDelivery.command, parsedFirstDelivery.identity);
+    expect(firstCommit.duplicate).toBe(false);
+
+    consumer = new WagerSqsConsumer(
+      config,
+      new ProcessWager(
+        new PostgresWagerPersistence(orm, schema, metrics),
+        metrics,
+      ),
+      metrics,
+    );
+    await sqs.send(new ChangeMessageVisibilityCommand({
+      QueueUrl: sourceQueueUrl,
+      ReceiptHandle: unacknowledgedMessage.ReceiptHandle,
+      VisibilityTimeout: 0,
+    }));
+    consumer.onModuleInit();
+
     await waitFor(async () => {
       const inboxRows = await orm!.em.getConnection().execute(
         `select "processed_at" is not null as "processed"
@@ -213,12 +238,6 @@ test('consumidor SQS usa inbox, espera commit, confirma redelivery e envia paylo
       return inboxRows[0]?.processed === true && walletRows[0]?.balance === '75.00';
     }, 'commit financeiro e inbox');
 
-    await sqs.send(new SendMessageCommand({
-      QueueUrl: sourceQueueUrl,
-      MessageBody: messageBody,
-      MessageGroupId: walletId,
-      MessageDeduplicationId: `redelivery-${suffix}`,
-    }));
     await waitFor(async () => {
       const attributes = await sqs.send(new GetQueueAttributesCommand({
         QueueUrl: sourceQueueUrl,

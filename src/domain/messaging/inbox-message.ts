@@ -1,6 +1,5 @@
 /**
  * Esta página modela a identidade persistente e o processamento de uma mensagem recebida.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface ReceiveInboxMessageProps {
   readonly consumerName: string;

@@ -1,5 +1,4 @@
 /** Esta página configura o painel e encaminha chamadas para a API local.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { fileURLToPath, URL } from 'node:url';
 import vue from '@vitejs/plugin-vue';

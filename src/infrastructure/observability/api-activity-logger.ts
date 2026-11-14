@@ -1,6 +1,5 @@
 /**
  * Esta página envia os logs do NestJS ao terminal e à janela local de atividade.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   ConsoleLogger,

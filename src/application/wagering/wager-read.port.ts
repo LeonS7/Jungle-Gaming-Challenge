@@ -1,6 +1,5 @@
 /**
  * Esta página define projeções de leitura para transações de wagering.
- * Assinatura: Leonardo de Souza da Luz
  */
 import type { MoneyProps } from '../../domain/money/money.js';
 

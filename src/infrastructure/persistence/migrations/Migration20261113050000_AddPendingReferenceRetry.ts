@@ -1,6 +1,5 @@
 /**
  * Esta página adiciona o prazo e as tentativas duráveis das referências pendentes.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

@@ -1,6 +1,5 @@
 /**
  * Esta página persiste o saldo observado para responder replays idempotentes.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { Migration } from '@mikro-orm/migrations';
 

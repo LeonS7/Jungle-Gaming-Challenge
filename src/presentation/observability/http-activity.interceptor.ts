@@ -1,6 +1,5 @@
 /**
  * Esta página registra método, rota e resultado HTTP sem armazenar requisições.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   HttpException,

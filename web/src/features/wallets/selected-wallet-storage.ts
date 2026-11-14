@@ -1,6 +1,5 @@
 /**
  * Esta página persiste somente o identificador da carteira selecionada.
- * Assinatura: Leonardo de Souza da Luz
  */
 export const SELECTED_WALLET_STORAGE_KEY = 'jungle-gaming.selected-wallet.v1';
 

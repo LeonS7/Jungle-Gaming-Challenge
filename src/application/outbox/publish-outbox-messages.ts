@@ -1,6 +1,5 @@
 /**
  * Esta página coordena claim, publicação SQS e retry das mensagens da outbox.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { OutboxMessage } from '../../domain/outbox/outbox-message.js';
 import type { OperationalMetricsPort } from '../observability/operational-metrics.port.js';

@@ -1,6 +1,5 @@
 /**
  * Esta página verifica retenção limitada e paginação do registro de atividade.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { expect, test } from 'bun:test';
 import { ApiActivityLog } from '../../../src/infrastructure/observability/api-activity-log.js';

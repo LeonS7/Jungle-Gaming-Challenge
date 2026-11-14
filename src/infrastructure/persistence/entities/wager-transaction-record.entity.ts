@@ -1,6 +1,5 @@
 /**
  * Esta página mapeia as transações de wagering e suas chaves de unicidade.
- * Assinatura: Leonardo de Souza da Luz
  */
 import { DecimalType } from '@mikro-orm/core';
 import {

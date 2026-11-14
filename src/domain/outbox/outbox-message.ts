@@ -1,6 +1,5 @@
 /**
  * Esta página modela o retry e a conclusão de uma mensagem da outbox.
- * Assinatura: Leonardo de Souza da Luz
  */
 export interface OutboxMessageState {
   readonly id: string;

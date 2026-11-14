@@ -1,6 +1,5 @@
 /**
  * Esta página consome wagers por SQS, aguarda commit e controla retry e DLQ.
- * Assinatura: Leonardo de Souza da Luz
  */
 import {
   ChangeMessageVisibilityCommand,
