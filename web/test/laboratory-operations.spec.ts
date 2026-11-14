@@ -7,6 +7,7 @@ import {
   createReversalPayload,
   evaluateConcurrencyAcceptance,
   loadRetryableRequest,
+  retryStateForResponse,
   saveRetryableRequest,
   type RetryableWagerRequest,
 } from '../src/features/laboratory/laboratory-operations';
@@ -89,6 +90,27 @@ describe('operações do laboratório', () => {
 
     expect(loadRetryableRequest(storage)).toBeNull();
     expect(storage.length).toBe(0);
+  });
+
+  test('mantém operação pendente, distingue resultado incerto e libera apenas estado terminal conhecido', () => {
+    const request: RetryableWagerRequest = {
+      payload: createReversalPayload(createTransaction(), 'REFUND', 'refund-retry'),
+      key: 'chave-1',
+    };
+    expect(retryStateForResponse(request, 'PENDING_REFERENCE', 'tx-1')).toEqual({
+      payload: request.payload,
+      key: 'chave-1',
+      state: 'pending',
+      transactionId: 'tx-1',
+    });
+    expect(retryStateForResponse(request, 'ESTADO_DESCONHECIDO')).toEqual({
+      payload: request.payload,
+      key: 'chave-1',
+      state: 'uncertain',
+    });
+    for (const status of ['PROCESSED', 'REJECTED', 'FAILED']) {
+      expect(retryStateForResponse(request, status)).toBeNull();
+    }
   });
 
   test('confirma o cenário concorrente somente com dados de saldo, transações, ledger e reconciliação', () => {

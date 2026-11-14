@@ -11,40 +11,57 @@ import {
 import {
   clearRetryableRequest,
   loadRetryableRequest,
+  retryStateForResponse,
   saveRetryableRequest,
   type RetryableWagerRequest,
 } from '../laboratory/laboratory-operations';
-
-interface ActiveBet {
-  readonly externalTransactionId: string;
-  readonly roundId: string;
-  readonly amount: string;
-}
+import {
+  clearActiveRound,
+  inspectActiveRound,
+  loadActiveRound,
+  storeActiveRound,
+  type ActiveRoundContext,
+} from './active-round';
 
 const props = defineProps<{
   readonly wallet: WalletView | null;
   readonly lastRequest?: RetryableWagerRequest | null;
+  readonly pendingRetry?: RetryableWagerRequest | null;
 }>();
 const emit = defineEmits<{
   (event: 'wallet-refreshed', wallet: WalletView): void;
   (event: 'open-statement'): void;
   (event: 'open-laboratory'): void;
   (event: 'last-request-changed', request: { payload: WagerRequest; key: string } | null): void;
+  (event: 'retry-request-changed', request: RetryableWagerRequest | null): void;
 }>();
 
 const providerId = 'fortune-chimp';
 const gameId = 'fortune-chimp';
 const betAmount = ref('10.00');
 const prizeAmount = ref('20.00');
-const activeBet = ref<ActiveBet | null>(null);
+const activeRound = ref<ActiveRoundContext | null>(null);
+const activeRoundVerified = ref(false);
+const activeRoundChecking = ref(false);
+const activeRoundPending = ref(false);
+const activeRoundError = ref<string | null>(null);
 const busy = ref(false);
 const result = ref<WagerSubmissionView | null>(null);
 const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 const pendingRetry = ref<RetryableWagerRequest | null>(null);
+let recoverySequence = 0;
 
-const canBet = computed(() => props.wallet !== null && !busy.value && activeBet.value === null && pendingRetry.value === null);
-const canResolve = computed(() => activeBet.value !== null && !busy.value && pendingRetry.value === null);
+const currentRound = computed(() =>
+  activeRound.value && activeRound.value.walletId === props.wallet?.id
+    ? activeRound.value
+    : null,
+);
+const roundWalletMismatch = computed(() =>
+  activeRound.value !== null && props.wallet?.id !== activeRound.value.walletId,
+);
+const canBet = computed(() => props.wallet !== null && !busy.value && activeRound.value === null && pendingRetry.value === null);
+const canResolve = computed(() => currentRound.value !== null && activeRoundVerified.value && !activeRoundChecking.value && !activeRoundPending.value && !busy.value && pendingRetry.value === null);
 
 function newId(): string {
   return globalThis.crypto.randomUUID();
@@ -72,31 +89,97 @@ async function refreshWallet(): Promise<void> {
   emit('wallet-refreshed', await wageringApi.getWallet(props.wallet.id));
 }
 
-async function restoreProcessedBet(): Promise<void> {
-  const request = props.lastRequest;
+function contextFromRequest(
+  request: RetryableWagerRequest,
+  transactionId?: string,
+): ActiveRoundContext | null {
+  const payload = request.payload;
+  if (payload.kind !== 'BET') return null;
+  return {
+    walletId: payload.walletId,
+    providerId: payload.providerId,
+    playerId: payload.playerId,
+    gameId: payload.gameId,
+    roundId: payload.roundId,
+    externalTransactionId: payload.externalTransactionId,
+    ...(transactionId ? { transactionId } : {}),
+    amount: payload.money.amount,
+    currency: payload.money.currency,
+  };
+}
+
+async function restoreActiveRound(): Promise<void> {
   const wallet = props.wallet;
-  if (!request || request.payload.kind !== 'BET' || !wallet || request.payload.walletId !== wallet.id) {
+  if (!wallet) return;
+  const sequence = ++recoverySequence;
+  activeRoundError.value = null;
+
+  let context: ActiveRoundContext | null;
+  try {
+    context = loadActiveRound(window.localStorage);
+    if (!context) {
+      const request = props.lastRequest ?? pendingRetry.value;
+      context = request?.payload.walletId === wallet.id
+        ? contextFromRequest(request)
+        : null;
+    }
+  } catch {
+    activeRoundError.value = 'O navegador bloqueou a leitura da rodada salva. A API não foi consultada.';
     return;
   }
+  if (!context) {
+    activeRound.value = null;
+    activeRoundVerified.value = false;
+    return;
+  }
+  activeRound.value = context;
+  if (context.walletId !== wallet.id) {
+    activeRoundVerified.value = false;
+    return;
+  }
+  activeRoundVerified.value = false;
+  activeRoundChecking.value = true;
+  activeRoundPending.value = false;
   try {
-    const transaction = await wageringApi.getProviderTransaction(
-      request.payload.providerId,
-      request.payload.externalTransactionId,
-    );
-    if (transaction.status !== 'PROCESSED' || props.wallet?.id !== wallet.id) return;
-    activeBet.value = {
-      externalTransactionId: transaction.externalTransactionId,
-      roundId: transaction.roundId,
-      amount: transaction.money.amount,
-    };
-    if (transaction.money.amount === '10.00') prizeAmount.value = '20.00';
-    successMessage.value = 'A BET processada foi recuperada da API. Escolha o resultado desta rodada.';
+    const inspection = await inspectActiveRound(context, wageringApi);
+    if (sequence !== recoverySequence || props.wallet?.id !== wallet.id) return;
+
+    if (inspection.state === 'resolved' || inspection.state === 'invalid-bet') {
+      clearActiveRound(window.localStorage);
+      activeRound.value = null;
+      activeRoundVerified.value = false;
+      if (inspection.state === 'resolved') {
+        successMessage.value = 'A API confirmou que esta rodada já foi resolvida.';
+      }
+      return;
+    }
+    if (inspection.state === 'bet-pending') {
+      activeRoundPending.value = true;
+      activeRoundError.value = 'A BET ainda está pendente na API; a rodada não será aberta para resolução.';
+      return;
+    }
+    activeRoundVerified.value = true;
+    activeRoundPending.value = inspection.state === 'resolution-pending';
+    if (inspection.state === 'resolution-pending') {
+      successMessage.value = 'A API ainda está processando um resultado desta rodada. Aguarde e consulte novamente.';
+    } else {
+      storeActiveRound(window.localStorage, context);
+      if (context.amount === '10.00') prizeAmount.value = '20.00';
+      successMessage.value = 'A API confirmou que a BET está processada e a rodada continua sem resultado final.';
+    }
   } catch {
-    // A rodada não é reconstruída quando a API não confirma que a BET foi processada.
+    if (sequence === recoverySequence) {
+      activeRoundError.value = 'Não foi possível confirmar o estado da rodada pela API. A resolução permanece bloqueada.';
+    }
+  } finally {
+    if (sequence === recoverySequence) activeRoundChecking.value = false;
   }
 }
 
 async function submit(payload: WagerRequest, label: string): Promise<WagerSubmissionView | null> {
+  recoverySequence += 1;
+  activeRoundChecking.value = false;
+  activeRoundError.value = null;
   busy.value = true;
   errorMessage.value = null;
   successMessage.value = null;
@@ -111,6 +194,7 @@ async function submit(payload: WagerRequest, label: string): Promise<WagerSubmis
     return null;
   }
   pendingRetry.value = request;
+  emit('retry-request-changed', request);
   emit('last-request-changed', request);
   let submission: WagerSubmissionView;
   try {
@@ -123,10 +207,43 @@ async function submit(payload: WagerRequest, label: string): Promise<WagerSubmis
         // A resposta HTTP está disponível; o PostgreSQL continua sendo a fonte da verdade.
       }
       pendingRetry.value = null;
+      emit('retry-request-changed', null);
     }
     showError(error);
     busy.value = false;
     return null;
+  }
+  const retryAfterResponse = retryStateForResponse(request, submission.status, submission.transactionId);
+  if (retryAfterResponse) {
+    pendingRetry.value = retryAfterResponse;
+    try {
+      saveRetryableRequest(storage, pendingRetry.value);
+    } catch {
+      activeRoundError.value = 'A API confirmou uma operação pendente, mas o navegador não conseguiu atualizar o estado local.';
+    }
+    emit('retry-request-changed', pendingRetry.value);
+    result.value = submission;
+    successMessage.value = `${label}: ${submission.status}. O jogo ficará bloqueado até a API confirmar um estado final conhecido.`;
+    busy.value = false;
+    return submission;
+  }
+  if (payload.kind === 'BET' && submission.status === 'PROCESSED') {
+    const context = contextFromRequest(request, submission.transactionId);
+    if (context) {
+      activeRound.value = context;
+      activeRoundVerified.value = true;
+      activeRoundPending.value = false;
+      try {
+        storeActiveRound(storage, context);
+      } catch {
+        pendingRetry.value = { ...request, state: 'uncertain' };
+        emit('retry-request-changed', pendingRetry.value);
+        activeRoundError.value = 'A BET foi confirmada, mas o navegador não conseguiu salvar o contexto da rodada. A solicitação original foi mantida para recuperação.';
+        result.value = submission;
+        busy.value = false;
+        return submission;
+      }
+    }
   }
   try {
     clearRetryableRequest(storage);
@@ -134,6 +251,7 @@ async function submit(payload: WagerRequest, label: string): Promise<WagerSubmis
     // Uma cópia local antiga continua protegida pelo registro idempotente do PostgreSQL.
   }
   pendingRetry.value = null;
+  emit('retry-request-changed', null);
   result.value = submission;
   try {
     await refreshWallet();
@@ -156,10 +274,15 @@ async function placeBet(): Promise<void> {
   if (!accepted) {
     return;
   }
-  const candidate: ActiveBet = {
+  const candidate = {
     externalTransactionId: `fortune-bet-${newId()}`,
     roundId: `fortune-round-${newId()}`,
+    walletId: props.wallet.id,
+    providerId,
+    playerId: props.wallet.playerId,
+    gameId,
     amount: betAmount.value,
+    currency: props.wallet.balance.currency,
   };
   const submission = await submit({
     providerId,
@@ -169,10 +292,9 @@ async function placeBet(): Promise<void> {
     roundId: candidate.roundId,
     gameId,
     kind: 'BET',
-    money: { amount: candidate.amount, currency: props.wallet.balance.currency },
+    money: { amount: candidate.amount, currency: candidate.currency },
   }, 'Aposta enviada');
   if (submission?.status === 'PROCESSED') {
-    activeBet.value = candidate;
     prizeAmount.value = candidate.amount === '10.00' ? '20.00' : prizeAmount.value;
     successMessage.value = 'Aposta processada. Escolha agora o resultado da rodada.';
   }
@@ -180,7 +302,7 @@ async function placeBet(): Promise<void> {
 
 async function resolveBet(kind: 'WIN' | 'LOSS'): Promise<void> {
   const wallet = props.wallet;
-  const bet = activeBet.value;
+  const bet = currentRound.value;
   if (!wallet || !bet) {
     return;
   }
@@ -209,23 +331,35 @@ async function resolveBet(kind: 'WIN' | 'LOSS'): Promise<void> {
     ...(kind === 'WIN' ? { referenceExternalTransactionId: bet.externalTransactionId } : {}),
   }, kind === 'WIN' ? 'Prêmio enviado' : 'Perda enviada');
   if (submission?.status === 'PROCESSED') {
-    activeBet.value = null;
+    try {
+      clearActiveRound(window.localStorage);
+    } catch {
+      activeRoundError.value = 'A rodada foi concluída na API, mas o contexto salvo não pôde ser removido. Ele será validado novamente antes de qualquer uso.';
+    }
+    activeRound.value = null;
+    activeRoundVerified.value = false;
+    activeRoundPending.value = false;
   }
 }
 
 watch(() => props.wallet?.id, () => {
-  activeBet.value = null;
   result.value = null;
   errorMessage.value = null;
   successMessage.value = null;
-  void restoreProcessedBet();
-});
+  void restoreActiveRound();
+}, { immediate: true });
 
-watch(() => props.lastRequest, () => void restoreProcessedBet());
+watch(() => props.lastRequest, () => void restoreActiveRound());
+watch(() => props.pendingRetry, (request) => {
+  pendingRetry.value = request ?? null;
+  void restoreActiveRound();
+}, { immediate: true });
 
 onMounted(() => {
   try {
-    pendingRetry.value = loadRetryableRequest(window.localStorage);
+    pendingRetry.value = props.pendingRetry ?? loadRetryableRequest(window.localStorage);
+    emit('retry-request-changed', pendingRetry.value);
+    void restoreActiveRound();
   } catch {
     errorMessage.value = 'O navegador bloqueou a leitura de uma tentativa pendente. Abra o Laboratório para verificar e tentar novamente.';
   }
@@ -247,17 +381,28 @@ onMounted(() => {
         <div class="casino-balance"><span>SALDO DISPONÍVEL</span><strong>{{ wallet.balance.amount }} {{ wallet.balance.currency }}</strong></div>
       </header>
 
+      <div v-if="roundWalletMismatch" class="notice-box" role="alert">
+        Existe uma rodada vinculada à carteira {{ activeRound?.walletId }}. Selecione essa carteira para continuar; o jogo não enviará operações para a carteira atual.
+      </div>
+      <div v-if="activeRoundChecking" class="notice-box" role="status">
+        Consultando a API para confirmar se a rodada ainda pode ser resolvida…
+      </div>
+      <div v-if="activeRoundPending || activeRoundError" class="notice-box" role="status">
+        {{ activeRoundError || 'A API informa que um resultado desta rodada continua pendente.' }}
+        <button class="secondary-button compact-button" type="button" :disabled="activeRoundChecking" @click="restoreActiveRound">Consultar rodada novamente</button>
+      </div>
+
       <div v-if="pendingRetry" class="notice-box" role="status">
         Existe uma tentativa com resultado incerto. Novas apostas e resultados ficam bloqueados até reenviar o payload original no Laboratório.
         <button class="secondary-button compact-button" type="button" @click="emit('open-laboratory')">Abrir Laboratório</button>
       </div>
 
-      <div class="fortune-stage" :class="{ 'fortune-stage-active': activeBet }">
+      <div class="fortune-stage" :class="{ 'fortune-stage-active': currentRound }">
         <div class="fortune-lights" aria-hidden="true">✦ ✦ ✦</div>
         <p>FORTUNE CHIMP</p>
         <div class="fortune-icons" aria-hidden="true"><span>🐵</span><span>🎰</span><span>🍀</span></div>
-        <h2>{{ activeBet ? 'Rodada em andamento' : 'A mesa está aberta' }}</h2>
-        <span>{{ activeBet ? `Aposta registrada: ${activeBet.amount} ${wallet.balance.currency}` : 'Faça sua aposta e aguarde o resultado.' }}</span>
+        <h2>{{ currentRound ? 'Rodada em andamento' : 'A mesa está aberta' }}</h2>
+        <span>{{ currentRound ? `Aposta registrada: ${currentRound.amount} ${currentRound.currency}` : 'Faça sua aposta e aguarde o resultado.' }}</span>
       </div>
 
       <div class="casino-controls">
@@ -271,14 +416,14 @@ onMounted(() => {
             <button v-for="value in ['5.00', '10.00', '20.00', '80.00']" :key="value" type="button" :disabled="!canBet" @click="betAmount = value">{{ value }}</button>
           </div>
           <button class="casino-play-button" type="button" :disabled="!canBet" @click="placeBet">
-            {{ busy ? 'PROCESSANDO' : activeBet ? 'AGUARDE O RESULTADO' : 'APOSTAR' }}
+            {{ busy ? 'PROCESSANDO' : currentRound ? 'AGUARDE O RESULTADO' : 'APOSTAR' }}
           </button>
         </section>
 
         <section class="casino-control-card casino-result-card">
           <p class="section-kicker">RESULTADO DA RODADA</p>
           <p class="casino-result-help">Ganhar e perder só ficam disponíveis depois que a BET for processada pela API.</p>
-          <label v-if="activeBet" class="casino-prize-input">Prêmio (WIN)
+          <label v-if="currentRound" class="casino-prize-input">Prêmio (WIN)
             <input v-model="prizeAmount" :disabled="!canResolve" inputmode="decimal" autocomplete="off" />
           </label>
           <div class="casino-result-actions">

@@ -12,6 +12,7 @@ import {
   clearRetryableRequest,
   createReversalPayload,
   loadRetryableRequest,
+  retryStateForResponse,
   saveRetryableRequest,
   type RetryableWagerRequest,
   type ReversalKind,
@@ -19,10 +20,14 @@ import {
 
 const REQUEST_TIMEOUT_MILLISECONDS = 8_000;
 const PAGE_SIZE = 20;
-const props = defineProps<{ readonly wallet: WalletView | null }>();
+const props = defineProps<{
+  readonly wallet: WalletView | null;
+  readonly pendingRetry?: RetryableWagerRequest | null;
+}>();
 const emit = defineEmits<{
   (event: 'wallet-refreshed', wallet: WalletView): void;
   (event: 'last-request-changed', request: RetryableWagerRequest | null): void;
+  (event: 'retry-request-changed', request: RetryableWagerRequest | null): void;
 }>();
 
 const kind = ref<ReversalKind>('REFUND');
@@ -138,9 +143,10 @@ async function sendRequest(request: RetryableWagerRequest): Promise<void> {
     return;
   }
   try {
-    saveRetryableRequest(storage, request);
+    retryRequest.value = { ...request, state: 'uncertain' };
+    saveRetryableRequest(storage, retryRequest.value);
+    emit('retry-request-changed', retryRequest.value);
   } catch {
-    retryRequest.value = null;
     errorMessage.value = 'Não foi possível guardar a solicitação original no navegador; a operação não foi enviada.';
     busy.value = false;
     return;
@@ -151,34 +157,57 @@ async function sendRequest(request: RetryableWagerRequest): Promise<void> {
       request.key,
       AbortSignal.timeout(REQUEST_TIMEOUT_MILLISECONDS),
     );
+    let confirmedStatus = response.status;
     responseResult.value = {
       transactionId: response.transactionId,
       status: response.status,
       ...(response.failureCode ? { failureCode: response.failureCode } : {}),
     };
-    retryRequest.value = null;
     emit('last-request-changed', request);
     try {
-      clearRetryableRequest(storage);
-    } catch {
-      noticeMessage.value = 'A resposta foi recebida, mas o navegador não conseguiu limpar a cópia local. Um retry posterior continuará protegido pela chave persistida no backend.';
-    }
-    try {
-      replaceTransaction(await wageringApi.getTransaction(response.transactionId));
+      const transaction = await wageringApi.getTransaction(response.transactionId);
+      confirmedStatus = transaction.status;
+      replaceTransaction(transaction);
     } catch {
       // A resposta da operação continua disponível mesmo se a consulta complementar falhar.
+    }
+    responseResult.value = { ...responseResult.value, status: confirmedStatus };
+    const nextRetry = retryStateForResponse(request, confirmedStatus, response.transactionId);
+    if (nextRetry) {
+      retryRequest.value = nextRetry;
+      try {
+        saveRetryableRequest(storage, retryRequest.value);
+      } catch {
+        noticeMessage.value = 'O estado retornado pela API não é terminal, mas o navegador não conseguiu guardar sua identidade local.';
+      }
+      emit('retry-request-changed', retryRequest.value);
+    } else {
+      retryRequest.value = null;
+      try {
+        clearRetryableRequest(storage);
+      } catch {
+        noticeMessage.value = 'A resposta foi recebida, mas o navegador não conseguiu limpar a cópia local. A API continua sendo a fonte da verdade.';
+      }
+      emit('retry-request-changed', null);
     }
   } catch (error) {
     errorMessage.value = describeError(error);
     if (error instanceof ApiRequestError && error.status < 500) {
       retryRequest.value = null;
+      emit('retry-request-changed', null);
       try {
         clearRetryableRequest(storage);
       } catch {
         // Uma resposta HTTP conhecida não depende da cópia local para manter consistência.
       }
     } else {
-      retryRequest.value = request;
+      retryRequest.value = { ...request, state: 'uncertain' };
+      try {
+        saveRetryableRequest(storage, retryRequest.value);
+      } catch {
+        // A tela informa que o retry não pôde ser preservado no armazenamento local.
+      }
+      emit('retry-request-changed', retryRequest.value);
     }
     busy.value = false;
     return;
@@ -210,12 +239,52 @@ async function submitReversal(): Promise<void> {
 
 async function retryOriginalRequest(): Promise<void> {
   const request = retryRequest.value;
-  if (!request) return;
+  if (!request || request.state === 'pending') return;
   const accepted = window.confirm(
     `Reenviar exatamente o mesmo payload com a chave ${request.key}? A API decidirá se já existe resultado persistido.`,
   );
   if (!accepted) return;
   await sendRequest(request);
+}
+
+async function refreshRetryStatus(): Promise<void> {
+  const request = retryRequest.value;
+  if (!request || request.state !== 'pending') return;
+  busy.value = true;
+  errorMessage.value = null;
+  noticeMessage.value = null;
+  try {
+    const updated = await wageringApi.getProviderTransaction(
+      request.payload.providerId,
+      request.payload.externalTransactionId,
+    );
+    replaceTransaction(updated);
+    emit('last-request-changed', request);
+    if (updated.status === 'PROCESSED' || updated.status === 'REJECTED' || updated.status === 'FAILED') {
+      retryRequest.value = null;
+      const storage = useBrowserStorage();
+      if (storage) {
+        try {
+          clearRetryableRequest(storage);
+        } catch {
+          noticeMessage.value = 'A API confirmou o estado final, mas o navegador não conseguiu remover a cópia local.';
+        }
+      }
+      emit('retry-request-changed', null);
+      noticeMessage.value = `A API confirmou o estado final ${updated.status}.`;
+      await refreshWalletAndHistory();
+    } else {
+      retryRequest.value = { ...request, state: 'pending', transactionId: updated.transactionId };
+      const storage = useBrowserStorage();
+      if (storage) saveRetryableRequest(storage, retryRequest.value);
+      emit('retry-request-changed', retryRequest.value);
+      noticeMessage.value = `A API ainda informa ${updated.status}; o jogo permanece bloqueado.`;
+    }
+  } catch (error) {
+    errorMessage.value = describeError(error);
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function refreshPendingTransaction(): Promise<void> {
@@ -240,8 +309,13 @@ function formatTransaction(transaction: WagerTransactionView): string {
 
 onMounted(() => {
   const storage = useBrowserStorage();
-  retryRequest.value = storage ? loadRetryableRequest(storage) : null;
+  retryRequest.value = props.pendingRetry ?? (storage ? loadRetryableRequest(storage) : null);
+  emit('retry-request-changed', retryRequest.value);
 });
+
+watch(() => props.pendingRetry, (request) => {
+  retryRequest.value = request ?? null;
+}, { immediate: true });
 
 watch(() => props.wallet?.id, () => {
   transactions.value = [];
@@ -287,7 +361,7 @@ watch(kind, () => {
           </label>
           <p class="field-hint">{{ kind === 'REFUND' ? 'O domínio aceita REFUND somente de BET processada.' : 'O domínio aceita ROLLBACK de BET, WIN ou REFUND processada.' }} O valor permanece idêntico ao registro de origem.</p>
           <div class="button-row">
-            <button class="warning-button" type="submit" :disabled="busy || !selectedTransaction">{{ busy ? 'Enviando…' : `Confirmar ${kind}` }}</button>
+            <button class="warning-button" type="submit" :disabled="busy || !selectedTransaction || retryRequest !== null">{{ busy ? 'Enviando…' : `Confirmar ${kind}` }}</button>
             <button v-if="nextCursor" class="secondary-button" type="button" :disabled="loading || busy" @click="loadMore">{{ loading ? 'Carregando…' : 'Carregar transações anteriores' }}</button>
             <button class="secondary-button" type="button" :disabled="loading || busy" @click="loadHistory()">{{ loading ? 'Consultando…' : 'Atualizar histórico' }}</button>
           </div>
@@ -321,12 +395,14 @@ watch(kind, () => {
         <div><p class="section-kicker">TENTATIVA DE RESULTADO INCERTO</p><h2>Retry idêntico</h2></div>
         <span class="workspace-icon" aria-hidden="true">↻</span>
       </div>
-      <p class="workspace-help">O navegador preservou o payload original e a chave de idempotência. O retry reenviará os mesmos dados; o PostgreSQL decide se há um resultado anterior.</p>
+      <p v-if="retryRequest.state === 'pending'" class="workspace-help">A API confirmou que esta operação está pendente. O jogo permanece bloqueado; consulte o estado persistido antes de tentar outra ação.</p>
+      <p v-else class="workspace-help">O resultado da requisição é incerto. O retry reenviará o payload e a chave originais; o PostgreSQL decide se já existe um resultado.</p>
       <div class="idempotency-actions">
         <div><strong>Chave original</strong><span>{{ retryRequest.key }}</span></div>
         <div><strong>Operação</strong><span>{{ retryRequest.payload.kind }} · {{ retryRequest.payload.money.amount }} {{ retryRequest.payload.money.currency }} · {{ retryRequest.payload.externalTransactionId }}</span></div>
         <div><strong>Jogador / carteira</strong><span>{{ retryRequest.payload.playerId }} · {{ retryRequest.payload.walletId }}</span></div>
-        <button class="secondary-button" type="button" :disabled="busy" @click="retryOriginalRequest">{{ busy ? 'Reenviando…' : 'Repetir exatamente' }}</button>
+        <button v-if="retryRequest.state === 'pending'" class="secondary-button" type="button" :disabled="busy" @click="refreshRetryStatus">{{ busy ? 'Consultando…' : 'Consultar estado na API' }}</button>
+        <button v-else class="secondary-button" type="button" :disabled="busy" @click="retryOriginalRequest">{{ busy ? 'Reenviando…' : 'Repetir exatamente' }}</button>
       </div>
     </article>
 

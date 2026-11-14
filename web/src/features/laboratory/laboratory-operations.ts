@@ -12,6 +12,26 @@ export type ReversalKind = 'REFUND' | 'ROLLBACK';
 export interface RetryableWagerRequest {
   readonly payload: WagerRequest;
   readonly key: string;
+  readonly state?: 'uncertain' | 'pending';
+  readonly transactionId?: string;
+}
+
+export function retryStateForResponse(
+  request: RetryableWagerRequest,
+  status: string,
+  transactionId?: string,
+): RetryableWagerRequest | null {
+  if (status === 'PROCESSED' || status === 'REJECTED' || status === 'FAILED') {
+    return null;
+  }
+  if (status === 'PENDING' || status === 'PENDING_REFERENCE') {
+    return {
+      ...request,
+      state: 'pending',
+      ...(transactionId ? { transactionId } : {}),
+    };
+  }
+  return { ...request, state: 'uncertain' };
 }
 
 export interface ConcurrencyAcceptanceAudit {
@@ -45,6 +65,8 @@ function isRetryableRequest(value: unknown): value is RetryableWagerRequest {
     typeof payload.money === 'object' && payload.money !== null &&
     typeof payload.money.amount === 'string' &&
     typeof payload.money.currency === 'string' &&
+    (candidate.state === undefined || candidate.state === 'uncertain' || candidate.state === 'pending') &&
+    (candidate.transactionId === undefined || typeof candidate.transactionId === 'string') &&
     (payload.referenceExternalTransactionId === undefined ||
       typeof payload.referenceExternalTransactionId === 'string');
 }

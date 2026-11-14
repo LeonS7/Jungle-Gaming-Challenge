@@ -24,6 +24,10 @@ import {
   type HealthState,
 } from './api/dashboard-api';
 import { formatTimestamp } from './features/dashboard/format-timestamp';
+import {
+  loadRetryableRequest,
+  type RetryableWagerRequest,
+} from './features/laboratory/laboratory-operations';
 
 const REFRESH_INTERVAL_MILLISECONDS = 15_000;
 type MainSection = 'game' | 'statement' | 'lab';
@@ -38,6 +42,7 @@ const pageError = ref<string | null>(null);
 const activeSection = ref<MainSection>('game');
 const selectedWallet = ref<WalletView | null>(null);
 const lastWagerRequest = ref<LastWagerRequest | null>(null);
+const pendingRetryRequest = ref<RetryableWagerRequest | null>(null);
 const restoringWallet = ref(false);
 const walletContextError = ref<string | null>(null);
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -153,6 +158,11 @@ async function restoreSelectedWallet(): Promise<void> {
 }
 
 onMounted(() => {
+  try {
+    pendingRetryRequest.value = loadRetryableRequest(window.localStorage);
+  } catch {
+    pendingRetryRequest.value = null;
+  }
   void refreshDashboard();
   void restoreSelectedWallet();
   refreshTimer = setInterval(() => void refreshDashboard(), REFRESH_INTERVAL_MILLISECONDS);
@@ -234,7 +244,7 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <section v-if="activeSection === 'lab'" id="secao-laboratorio" class="content-area" aria-label="Laboratório de Testes">
+      <section v-show="activeSection === 'lab'" id="secao-laboratorio" class="content-area" aria-label="Laboratório de Testes">
         <section class="page-heading">
           <div>
             <p class="eyebrow">FERRAMENTAS TÉCNICAS <span>•</span> AMBIENTE LOCAL</p>
@@ -357,14 +367,18 @@ onUnmounted(() => {
             :wallet="selectedWallet"
             mode="laboratory"
             :last-request="lastWagerRequest"
+            :pending-retry="pendingRetryRequest"
             @wallet-refreshed="selectWallet"
+            @retry-request-changed="pendingRetryRequest = $event"
           />
         </section>
         <section class="operation-screen operation-screen-spaced" aria-label="Reversões e referências pendentes">
           <TransactionLaboratoryWorkspace
             :wallet="selectedWallet"
+            :pending-retry="pendingRetryRequest"
             @wallet-refreshed="selectWallet"
             @last-request-changed="lastWagerRequest = $event"
+            @retry-request-changed="pendingRetryRequest = $event"
           />
         </section>
         <section class="operation-screen operation-screen-spaced" aria-label="Cenários guiados">
@@ -376,7 +390,7 @@ onUnmounted(() => {
         </footer>
       </section>
 
-      <section v-else-if="activeSection === 'statement'" id="secao-extrato" class="content-area operations-area" aria-label="Extrato">
+      <section v-show="activeSection === 'statement'" id="secao-extrato" class="content-area operations-area" aria-label="Extrato">
         <section class="page-heading">
           <div>
             <p class="eyebrow">HISTÓRICO PERSISTENTE <span>•</span> API REAL</p>
@@ -387,7 +401,7 @@ onUnmounted(() => {
         </section>
         <TransactionHistoryWorkspace
           :wallet-id="selectedWallet?.id ?? null"
-          :active="true"
+          :active="activeSection === 'statement'"
           @return-to-game="showSection('game')"
         />
         <footer class="page-footer">
@@ -396,7 +410,7 @@ onUnmounted(() => {
         </footer>
       </section>
 
-      <section v-else id="secao-jogo" class="content-area operations-area" aria-label="Jogo">
+      <section v-show="activeSection === 'game'" id="secao-jogo" class="content-area operations-area" aria-label="Jogo">
         <section class="page-heading">
           <div>
             <p class="eyebrow">EXPERIÊNCIA PRINCIPAL <span>•</span> OPERAÇÕES REAIS</p>
@@ -437,8 +451,10 @@ onUnmounted(() => {
           <CasinoGameWorkspace
             :wallet="selectedWallet"
             :last-request="lastWagerRequest"
+            :pending-retry="pendingRetryRequest"
             @wallet-refreshed="selectWallet"
             @last-request-changed="lastWagerRequest = $event"
+            @retry-request-changed="pendingRetryRequest = $event"
             @open-statement="showSection('statement')"
             @open-laboratory="showSection('lab')"
           />

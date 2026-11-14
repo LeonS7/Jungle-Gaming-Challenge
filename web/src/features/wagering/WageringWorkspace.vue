@@ -10,7 +10,12 @@ import {
   type WagerSubmissionView,
   type WagerTransactionView,
 } from '../../api/wagering-api';
-import { clearRetryableRequest, saveRetryableRequest } from '../laboratory/laboratory-operations';
+import {
+  clearRetryableRequest,
+  retryStateForResponse,
+  saveRetryableRequest,
+  type RetryableWagerRequest,
+} from '../laboratory/laboratory-operations';
 
 interface LastWagerRequest {
   readonly payload: WagerRequest;
@@ -21,10 +26,12 @@ const props = defineProps<{
   readonly wallet: WalletView | null;
   readonly mode?: 'game' | 'laboratory';
   readonly lastRequest?: LastWagerRequest | null;
+  readonly pendingRetry?: RetryableWagerRequest | null;
 }>();
 const emit = defineEmits<{
   (event: 'wallet-refreshed', wallet: WalletView): void;
   (event: 'last-request-changed', request: LastWagerRequest | null): void;
+  (event: 'retry-request-changed', request: RetryableWagerRequest | null): void;
   (event: 'open-statement'): void;
 }>();
 
@@ -49,8 +56,11 @@ const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
 const requiresReference = computed(() => kind.value === 'REFUND' || kind.value === 'ROLLBACK');
-const canSubmit = computed(() => Boolean(props.wallet) && !busy.value);
+const canSubmit = computed(() => Boolean(props.wallet) && !busy.value && !props.pendingRetry);
 const lastRequest = computed(() => props.lastRequest ?? null);
+const canReplay = computed(() => Boolean(lastRequest.value) && !busy.value &&
+  (!props.pendingRetry || (props.pendingRetry.state !== 'pending' && props.pendingRetry.key === lastRequest.value?.key)));
+const canConflict = computed(() => Boolean(lastRequest.value) && !busy.value && !props.pendingRetry);
 
 function newTransactionId(): string {
   return globalThis.crypto.randomUUID();
@@ -112,21 +122,32 @@ async function process(payload: WagerRequest, key: string, confirmation: string)
   let storage: Storage;
   try {
     storage = window.localStorage;
-    saveRetryableRequest(storage, { payload, key });
+    saveRetryableRequest(storage, { payload, key, state: 'uncertain' });
+    emit('retry-request-changed', { payload, key, state: 'uncertain' });
   } catch {
     errorMessage.value = 'O navegador bloqueou o armazenamento da solicitação original; a operação não foi enviada.';
     busy.value = false;
     return;
   }
-  if (props.mode !== 'laboratory') {
-    emit('last-request-changed', { payload, key });
-  }
+  emit('last-request-changed', { payload, key });
   try {
     submission.value = await wageringApi.submitWager(payload, key, AbortSignal.timeout(8_000));
-    try {
-      clearRetryableRequest(storage);
-    } catch {
-      // A cópia local pode ser repetida com segurança porque a chave é validada no PostgreSQL.
+    const request = { payload, key };
+    const nextRetry = retryStateForResponse(request, submission.value.status, submission.value.transactionId);
+    if (nextRetry) {
+      try {
+        saveRetryableRequest(storage, nextRetry);
+      } catch {
+        errorMessage.value = 'A API não confirmou um estado terminal e o navegador não conseguiu atualizar o retry local.';
+      }
+      emit('retry-request-changed', nextRetry);
+    } else {
+      try {
+        clearRetryableRequest(storage);
+      } catch {
+        // A API já retornou um estado terminal e mantém a operação persistida.
+      }
+      emit('retry-request-changed', null);
     }
     transaction.value = null;
     successMessage.value = submission.value.idempotentReplay
@@ -143,6 +164,15 @@ async function process(payload: WagerRequest, key: string, confirmation: string)
       } catch {
         // A resposta HTTP está disponível; não há resultado financeiro incerto.
       }
+      emit('retry-request-changed', null);
+    } else {
+      const request = { payload, key, state: 'uncertain' as const };
+      try {
+        saveRetryableRequest(storage, request);
+      } catch {
+        // O alerta explica que o retry não pôde ser preservado no navegador.
+      }
+      emit('retry-request-changed', request);
     }
     showError(error);
   } finally {
@@ -162,7 +192,7 @@ async function submitCurrent(): Promise<void> {
 
 async function replayLast(): Promise<void> {
   const request = lastRequest.value;
-  if (!request) return;
+  if (!request || !canReplay.value) return;
   await process(
     request.payload,
     request.key,
@@ -172,7 +202,7 @@ async function replayLast(): Promise<void> {
 
 async function conflictLast(): Promise<void> {
   const request = lastRequest.value;
-  if (!request) return;
+  if (!request || !canConflict.value) return;
   const alteredPayload: WagerRequest = {
     ...request.payload,
     gameId: `${request.payload.gameId}-alterado`,
@@ -262,8 +292,8 @@ async function lookup(): Promise<void> {
         <div class="idempotency-actions">
           <div><strong>Última chave de idempotência</strong><span>{{ lastRequest.key }}</span></div>
           <div class="button-row">
-            <button class="secondary-button" type="button" :disabled="busy" @click="replayLast">Repetir exatamente</button>
-            <button class="warning-button" type="button" :disabled="busy" @click="conflictLast">Repetir com conteúdo alterado</button>
+            <button class="secondary-button" type="button" :disabled="!canReplay" @click="replayLast">Repetir exatamente</button>
+            <button class="warning-button" type="button" :disabled="!canConflict" @click="conflictLast">Repetir com conteúdo alterado</button>
           </div>
         </div>
       </template>
