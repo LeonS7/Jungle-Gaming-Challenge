@@ -1,16 +1,63 @@
-# Esta página documenta a consulta paginada do histórico por carteira.
+# Esta página documenta o console de atividade e a consulta paginada do histórico.
 # Assinatura: Leonardo de Souza da Luz
 openapi: 3.1.0
 info:
   title: API de wagering distribuído
   version: 1.0.0
   description: >-
-    Contrato da consulta paginada de transações persistidas da carteira. A API de
-    demonstração não possui autenticação e deve permanecer limitada ao host local.
+    Contrato da consulta paginada de transações persistidas e da atividade local
+    da API. A demonstração não possui autenticação e deve permanecer limitada ao
+    host local.
 servers:
   - url: http://127.0.0.1:3000
     description: Instância local para demonstração
 paths:
+  /:
+    get:
+      operationId: abrirConsoleDeAtividade
+      summary: Abre o console local da API
+      description: >-
+        Entrega a página de acompanhamento de requisições e eventos recentes do
+        processo. A página consulta GET /activity em intervalos regulares.
+      responses:
+        '200':
+          description: Página HTML do console de atividade.
+          content:
+            text/html:
+              schema:
+                type: string
+  /activity:
+    get:
+      operationId: consultarAtividadeRecente
+      summary: Consulta registros recentes da instância atual
+      description: >-
+        Retorna registros mantidos em memória pelo processo atual. São limitados
+        aos 500 mais recentes e desaparecem quando a instância reinicia. Não há
+        agregação entre réplicas. Requisições HTTP são registradas sem corpo,
+        cabeçalhos nem parâmetros. Este histórico não participa de idempotência
+        nem de consistência financeira.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: Número de sequência da última entrada recebida.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+      responses:
+        '200':
+          description: Registros recentes depois do cursor informado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiActivityPage'
+        '400':
+          description: Cursor inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /wallets/{walletId}/transactions:
     get:
       operationId: listarTransacoesDaCarteira
@@ -159,6 +206,45 @@ components:
             $ref: '#/components/schemas/WalletTransaction'
         nextCursor:
           type: [string, 'null']
+    ApiActivityRecord:
+      type: object
+      required: [sequence, occurredAt, level, message]
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        occurredAt:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [log, error, warn, debug, verbose, fatal]
+        context:
+          type: string
+          maxLength: 120
+        message:
+          type: string
+          maxLength: 4096
+    ApiActivityPage:
+      type: object
+      required: [items, nextCursor, gap, hasMore]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ApiActivityRecord'
+        nextCursor:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        gap:
+          type: boolean
+          description: Indica que há entradas anteriores fora do buffer ou da página inicial.
+        hasMore:
+          type: boolean
+          description: Indica que há mais entradas retidas após a página atual.
     ApiError:
       type: object
       required: [statusCode, code, message]

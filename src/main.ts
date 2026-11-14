@@ -6,12 +6,14 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { loadApplicationConfig } from './config/application-config.js';
 import { AppModule } from './app.module.js';
+import { ApiActivityLogger } from './infrastructure/observability/api-activity-logger.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadApplicationConfig();
   const app = await NestFactory.create(
     AppModule.register(config, config.postgres.schema),
   );
+  app.useLogger(app.get(ApiActivityLogger));
   app.enableShutdownHooks();
   await app.listen(config.appPort, '127.0.0.1');
 }

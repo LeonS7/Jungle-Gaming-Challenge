@@ -5,6 +5,7 @@
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { MikroORM } from '@mikro-orm/postgresql';
 import { ProcessWager } from './application/wagering/process-wager.js';
 import { GetWagerTransaction } from './application/wagering/get-wager-transaction.js';
@@ -35,7 +36,10 @@ import { WalletReconciliationMetrics } from './infrastructure/observability/wall
 import { MetricsController } from './presentation/observability/metrics.controller.js';
 import { PendingReferenceWorker } from './infrastructure/messaging/pending-reference-worker.js';
 import { WageringMetrics } from './infrastructure/observability/wagering-metrics.js';
-import { PanelController } from './presentation/panel/panel.controller.js';
+import { ApiActivityLog } from './infrastructure/observability/api-activity-log.js';
+import { ApiActivityLogger } from './infrastructure/observability/api-activity-logger.js';
+import { ApiActivityController } from './presentation/observability/api-activity.controller.js';
+import { HttpActivityInterceptor } from './presentation/observability/http-activity.interceptor.js';
 
 @Module({})
 export class AppModule {
@@ -50,7 +54,7 @@ export class AppModule {
         MikroOrmModule.forRoot(createMikroOrmOptions(config, schema)),
       ],
       controllers: [
-        PanelController,
+        ApiActivityController,
         HealthController,
         WageringController,
         WageringQueriesController,
@@ -59,6 +63,9 @@ export class AppModule {
       ],
       providers: [
         { provide: APPLICATION_CONFIG, useValue: config },
+        ApiActivityLog,
+        ApiActivityLogger,
+        { provide: APP_INTERCEPTOR, useClass: HttpActivityInterceptor },
         HealthService,
         WalletReconciliationMetrics,
         WageringMetrics,

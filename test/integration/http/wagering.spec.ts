@@ -31,6 +31,18 @@ interface HttpResponseBody {
   readonly version?: number;
 }
 
+interface ApiActivityHttpResponse {
+  readonly items?: readonly {
+    readonly sequence: number;
+    readonly context?: string;
+    readonly message: string;
+  }[];
+  readonly nextCursor?: number;
+  readonly gap?: boolean;
+  readonly hasMore?: boolean;
+  readonly code?: string;
+}
+
 interface WalletLedgerHttpResponse {
   readonly items?: readonly {
     readonly id: string;
@@ -210,12 +222,30 @@ function createRequest(
   };
 }
 
-test('GET / encaminha o navegador para o painel web configurado', async () => {
+test('GET / mostra o console da API e GET /activity retorna atividade HTTP recente', async () => {
   await withHttpApplication(async ({ baseUrl }) => {
     const response = await fetch(`${baseUrl}/`, { redirect: 'manual' });
+    const html = await response.text();
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('http://127.0.0.1:5173');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(html).toContain('Console de atividade da API');
+
+    const activityResponse = await fetch(`${baseUrl}/activity`);
+    const activity = await activityResponse.json() as ApiActivityHttpResponse;
+    expect(activityResponse.status).toBe(200);
+    expect(activity.items?.some((item) =>
+      item.context === 'HttpActivity' &&
+      item.message.includes('"route":"/"') &&
+      item.message.includes('"statusCode":200')
+    )).toBe(true);
+    expect(typeof activity.nextCursor).toBe('number');
+
+    const invalidCursorResponse = await fetch(`${baseUrl}/activity?after=-1`);
+    const invalidCursor = await invalidCursorResponse.json() as ApiActivityHttpResponse;
+    expect(invalidCursorResponse.status).toBe(400);
+    expect(invalidCursor.code).toBe('INVALID_REQUEST');
   });
 });
 
