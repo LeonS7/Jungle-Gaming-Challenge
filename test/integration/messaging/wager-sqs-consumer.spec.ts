@@ -98,7 +98,7 @@ async function waitFor(
   throw new Error(`Tempo esgotado aguardando ${description}.`);
 }
 
-test('redelivery após commit sem ack não duplica e consumidor trata retry e DLQ', async () => {
+test('redelivery, retries esgotados e DLQ preservam consistência financeira', async () => {
   const baseConfig = loadApplicationConfig();
   const suffix = randomUUID().replaceAll('-', '');
   const schema = `teste_sqs_${suffix}`;
@@ -158,7 +158,7 @@ test('redelivery após commit sem ack não duplica e consumidor trata retry e DL
         ContentBasedDeduplication: 'false',
         RedrivePolicy: JSON.stringify({
           deadLetterTargetArn: deadLetterArn,
-          maxReceiveCount: '2',
+          maxReceiveCount: '5',
         }),
       },
     }));
@@ -386,6 +386,53 @@ test('redelivery após commit sem ack não duplica e consumidor trata retry e DL
       throw new Error('A mensagem excedida não chegou à DLQ.');
     }
     expect(JSON.parse(redrivenBody).messageId).toBe(permanentMessageId);
+    const failedTransactionRows = await orm.em.getConnection().execute(
+      `select "id", "status", "failure_code" as "failureCode",
+              "result_balance"::text as "resultBalance",
+              "result_currency" as "resultCurrency"
+       from ${table(schema, 'wager_transactions')}
+       where "external_transaction_id" = ?`,
+      [`aposta-dlq-${suffix}`],
+    );
+    expect(failedTransactionRows).toHaveLength(1);
+    expect(failedTransactionRows[0]).toMatchObject({
+      status: 'FAILED',
+      failureCode: 'PROCESSING_RETRIES_EXHAUSTED',
+      resultBalance: null,
+      resultCurrency: null,
+    });
+    const failedTransactionId = (failedTransactionRows[0] as { id: string }).id;
+    const failedLedgerRows = await orm.em.getConnection().execute(
+      `select count(*)::text as "entries"
+       from ${table(schema, 'wallet_ledger_entries')}
+       where "transaction_id" = ?`,
+      [failedTransactionId],
+    );
+    expect(failedLedgerRows).toEqual([{ entries: '0' }]);
+    const walletAfterFailure = await orm.em.getConnection().execute(
+      `select "balance"::text as "balance", "version"
+       from ${table(schema, 'wallets')} where "id" = ?`,
+      [walletId],
+    );
+    expect(walletAfterFailure).toEqual([{ balance: '70.00', version: 3 }]);
+    const processedFailureInbox = await orm.em.getConnection().execute(
+      `select "processed_at" is not null as "processed"
+       from ${table(schema, 'inbox_messages')}
+       where "message_id" = ?`,
+      [permanentMessageId],
+    );
+    expect(processedFailureInbox).toEqual([{ processed: true }]);
+    const failedReplay = await new ProcessWager(
+      new PostgresWagerPersistence(orm, schema, metrics),
+      metrics,
+    ).execute(parseWagerQueueMessage(permanentBody).command);
+    expect(failedReplay).toMatchObject({
+      transactionId: failedTransactionId,
+      status: 'FAILED',
+      balance: null,
+      idempotentReplay: true,
+      failureCode: 'PROCESSING_RETRIES_EXHAUSTED',
+    });
     const redrivenReceipt = redrivenMessage.Messages?.[0]?.ReceiptHandle;
     if (!redrivenReceipt) {
       throw new Error('A mensagem redirecionada à DLQ não trouxe receipt handle.');
@@ -439,6 +486,7 @@ test('redelivery após commit sem ack não duplica e consumidor trata retry e DL
     expect(metricOutput).toContain('wagering_duplicates_total{source="inbox"} 1');
     expect(metricOutput).toContain('wagering_retries_total{source="sqs"} ');
     expect(metricOutput).toContain('wagering_transactions_total{status="PROCESSED"} 2');
+    expect(metricOutput).toContain('wagering_transactions_total{status="FAILED"} 1');
   } finally {
     if (consumer) {
       await consumer.onModuleDestroy();

@@ -73,9 +73,11 @@ Os códigos abaixo são estáveis e aparecem no `failureCode` da transação rej
 
 Erros que impedem a criação de uma transação financeira, como payload inválido, carteira ausente, moeda divergente ou conflito de idempotência, são respostas HTTP distintas e não são registrados como `failureCode` de uma transação inexistente.
 
+`PROCESSING_RETRIES_EXHAUSTED` é reservado a uma entrada SQS válida que falha em todas as cinco entregas configuradas. O estado FAILED não recebe saldo de resposta, pois nenhuma movimentação financeira foi confirmada.
+
 Transações novas começam em **PENDING**. As transições de domínio para **PENDING_REFERENCE**, **PROCESSED**, **REJECTED** e **FAILED** são modeladas e estados terminais não podem ser alterados. **OPENING** é interno e só representa uma abertura de carteira com saldo inicial positivo.
 
-**Limite conhecido de FAILED:** o estado, a transição de domínio e as constraints do PostgreSQL existem, mas o caso de uso atual não persiste uma transação nesse estado. Erros transitórios antes do commit revertem toda a operação e são repetidos; mensagens inválidas ou conflitantes são enviadas à DLQ. A DLQ preserva a mensagem, mas isso não equivale a uma `WagerTransaction` FAILED consultável. O enunciado não especifica em que ponto um erro permanente de infraestrutura deve virar uma transação financeira persistida, especialmente se o próprio PostgreSQL estiver indisponível. A interpretação mais literal exigiria definir uma etapa durável de falha após o limite de retry, com código estável, identidade e comportamento de replay próprios; esse fluxo não foi implementado nesta entrega.
+Uma mensagem SQS válida que continua falhando após cinco entregas é finalizada como **FAILED**, com `failureCode=PROCESSING_RETRIES_EXHAUSTED`. A transação, a inbox processada e a falha são gravadas na mesma transação PostgreSQL, sem atualizar carteira nem criar ledger. Em seguida, a mensagem original é enviada à DLQ. Se o próprio PostgreSQL não permitir gravar o resultado final, a mensagem segue à DLQ sem uma linha `FAILED`; esse limite é inevitável sem uma segunda fonte de persistência. Repetir a consulta ou o comando pela chave original retorna o mesmo status FAILED e código de falha. Não há evento `WagerTransactionFailed`: o enunciado não o inclui no catálogo mínimo, e a falha fica auditável pela transação persistida e pela mensagem da DLQ.
 
 ## Integridade e concorrência no PostgreSQL
 
@@ -119,7 +121,7 @@ A inbox conserva a chave (consumer_name, message_id) sem política de expurgo. R
 
 ## Outbox e SQS
 
-A entrada usa a fila **wager-transactions.fifo**, com DLQ **wager-transactions-dlq.fifo**. O consumidor reutiliza o parser e o caso de uso de wagering, calcula o hash do corpo, grava a inbox e só confirma a mensagem após o commit. Erros de negócio terminais são auditados e confirmados. Falhas operacionais recebem nova tentativa com atraso exponencial até 60 segundos; mensagens inválidas vão à DLQ antes da remoção da origem. A fila local move mensagens após cinco recebimentos. No SIGTERM, o consumer para de buscar novas mensagens e mantém a renovação da visibilidade durante o processamento. Ao terminar o handler, interrompe o heartbeat antes de confirmar ou agendar retry, evitando que uma renovação concorrente sobrescreva o atraso configurado.
+A entrada usa a fila **wager-transactions.fifo**, com DLQ **wager-transactions-dlq.fifo** e limite de cinco entregas, igual ao limite usado pelo consumer. Ele reutiliza o parser e o caso de uso de wagering, calcula o hash do corpo e grava a inbox na mesma transação que o resultado. Só confirma a mensagem depois do commit. Erros de negócio terminais são auditados e confirmados. Falhas operacionais recebem atraso exponencial de até 60 segundos; no quinto recebimento, o consumer grava FAILED e move a mensagem original à DLQ. Se não conseguir persistir FAILED, tenta mover a mensagem diretamente à DLQ. Mensagens inválidas vão à DLQ sem criar transação financeira. No SIGTERM, o consumer para de buscar novas mensagens e mantém a renovação da visibilidade durante o processamento; ao encerrar o handler, espera qualquer renovação em voo e interrompe o heartbeat antes de confirmar ou agendar retry.
 
 A outbox publica na fila separada **wager-events.fifo**. Publishers concorrentes reclamam linhas elegíveis usando FOR UPDATE SKIP LOCKED, gravam lease e confirmam o claim antes de chamar SQS. Somente o menor evento ainda não publicado de cada transação é reclamado por vez. O grupo FIFO usa a transação; o ID do evento é o identificador estável de deduplicação.
 
@@ -128,7 +130,7 @@ Depois do envio, o publisher marca a linha publicada apenas se o lease ainda lhe
 ## HTTP, saúde e reconciliação
 
 - **POST /wallets** abre a carteira e, para saldo positivo, grava OPENING, crédito no ledger e eventos atomicamente. Saldo zero cria apenas a carteira.
-- **POST /wagering/transactions** recebe as operações financeiras. Processado ou rejeitado por regra de negócio retorna HTTP 200 com status de domínio; referência pendente retorna HTTP 202 sem saldo; validação retorna 400; conflitos retornam 409; carteira ausente ou de outro jogador retorna 404; moeda divergente retorna 422; persistência indisponível retorna 503; falha inesperada retorna 500 sem detalhes financeiros.
+- **POST /wagering/transactions** recebe as operações financeiras. Processado, rejeitado por regra de negócio ou FAILED recuperado por replay retorna HTTP 200 com status de domínio; referência pendente retorna HTTP 202 sem saldo; validação retorna 400; conflitos retornam 409; carteira ausente ou de outro jogador retorna 404; moeda divergente retorna 422; persistência indisponível retorna 503; falha inesperada retorna 500 sem detalhes financeiros.
 - Consultas de carteira, ledger, transação e histórico são somente leitura. Ledger e transações usam cursor estável por (created_at, id), sem OFFSET. Os cursores base64url são opacos para o cliente e vinculados à carteira, mas não são assinaturas criptográficas.
 - **POST /wallets/:walletId/reconciliation** compara o saldo persistido com créditos menos débitos do ledger. Informa diferença e quantidade de lançamentos; não executa reparo automático.
 - **GET /health/live** verifica que o processo responde. **GET /health/ready** verifica PostgreSQL e filas SQS configuradas.
@@ -172,6 +174,7 @@ A suíte usa Bun e serviços PostgreSQL/LocalStack reais nas integrações:
 - Um teste distribuído inicia três processos Bun, envia 50 solicitações iguais, valida um único débito e recupera referência pendente após reinício.
 - Integração SQS encerra um processo real depois do commit e antes do ACK: deixa a mensagem sem confirmação, inicia uma segunda instância e verifica que a inbox evita novo débito e permite ACK na redelivery.
 - Integração da outbox encerra o publisher depois que o LocalStack aceita o evento, mas antes de o processo confirmar a publicação no PostgreSQL. O lease é expirado deterministicamente no teste; outra instância recupera os registros e o evento não se perde.
+- Integração SQS induz falha operacional até a quinta entrega, confirma transação FAILED e inbox concluída, ausência de lançamento e saldo inalterado, consulta por replay idempotente e envio da mensagem original à DLQ.
 - Integração PostgreSQL encerra a conexão do backend antes do commit e confirma que saldo, transação, ledger e outbox não ficam parcialmente gravados; a mesma solicitação pode ser repetida depois.
 - Integração com duas instâncias reais disputa saldo, valida um único débito, reinicia o serviço e confirma replay idempotente e conflito para payload divergente.
 - A integração SQS também exercita retry transitório e DLQ.

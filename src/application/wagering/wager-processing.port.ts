@@ -61,6 +61,7 @@ export interface WagerTransactionSession {
     transaction: WagerTransaction,
     observedBalance: Money,
   ): Promise<void>;
+  saveFailedTransaction(transaction: WagerTransaction): Promise<void>;
 }
 
 export interface WagerPersistencePort {

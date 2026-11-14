@@ -40,6 +40,7 @@ sqs.create_queue(
         "RedrivePolicy": json.dumps(
             {
                 "deadLetterTargetArn": dead_letter_queue_arn,
+                # Deve coincidir com MAX_PROCESSING_ATTEMPTS do consumer SQS.
                 "maxReceiveCount": "5",
             }
         ),

@@ -60,6 +60,7 @@ export interface ProcessWagerResult {
   readonly status:
     | WagerTransactionStatus.Processed
     | WagerTransactionStatus.Rejected
+    | WagerTransactionStatus.Failed
     | WagerTransactionStatus.PendingReference;
   readonly balance: Money | null;
   readonly idempotentReplay: boolean;
@@ -82,7 +83,12 @@ export interface InboxMessageIdentity {
 
 type InternalWagerResult =
   | { readonly kind: 'RESULT'; readonly result: ProcessWagerResult }
-  | { readonly kind: 'DUPLICATE_INBOX_MESSAGE' };
+  | {
+      readonly kind: 'DUPLICATE_INBOX_MESSAGE';
+      readonly result?: ProcessWagerResult;
+    };
+
+const PROCESSING_RETRIES_EXHAUSTED = 'PROCESSING_RETRIES_EXHAUSTED';
 
 export class IdempotencyConflictError extends Error {
   constructor() {
@@ -184,7 +190,26 @@ export class ProcessWager {
       () => this.executeInternal(command, identity),
     );
     return outcome.kind === 'DUPLICATE_INBOX_MESSAGE'
-      ? { duplicate: true }
+      ? {
+          duplicate: true,
+          ...(outcome.result ? { result: outcome.result } : {}),
+        }
+      : { duplicate: false, result: outcome.result };
+  }
+
+  /** Persiste a falha terminal sem tentar aplicar novamente o comando financeiro. */
+  async failAfterRetriesFromInbox(
+    command: ProcessWagerCommand,
+    identity: InboxMessageIdentity,
+  ): Promise<{ readonly duplicate: boolean; readonly result?: ProcessWagerResult }> {
+    const outcome = await this.executeMeasured(
+      () => this.persistFailureAfterRetries(command, identity),
+    );
+    return outcome.kind === 'DUPLICATE_INBOX_MESSAGE'
+      ? {
+          duplicate: true,
+          ...(outcome.result ? { result: outcome.result } : {}),
+        }
       : { duplicate: false, result: outcome.result };
   }
 
@@ -250,7 +275,15 @@ export class ProcessWager {
           const registration = await session.registerInboxMessage(inboxMessage);
           this.assertInboxRegistration(registration);
           if (registration === 'DUPLICATE') {
-            return { kind: 'DUPLICATE_INBOX_MESSAGE' };
+            const existing = await session.findByIdempotencyKey(
+              command.idempotencyKey,
+            );
+            return {
+              kind: 'DUPLICATE_INBOX_MESSAGE',
+              ...(existing
+                ? { result: this.replay(existing, command.payloadHash) }
+                : {}),
+            };
           }
         }
         const complete = async (
@@ -357,6 +390,94 @@ export class ProcessWager {
       if (inboxIdentity) {
         await this.completeInboxOutsideWager(inboxIdentity);
       }
+      return { kind: 'RESULT', result };
+    }
+  }
+
+  /** Grava a transação FAILED e a inbox juntas, sem aplicar efeitos financeiros. */
+  private async persistFailureAfterRetries(
+    command: ProcessWagerCommand,
+    identity: InboxMessageIdentity,
+  ): Promise<InternalWagerResult> {
+    const inboxMessage = InboxMessage.receive(identity);
+    const transaction = WagerTransaction.create({
+      id: randomUUID(),
+      providerId: command.providerId,
+      externalTransactionId: command.externalTransactionId,
+      idempotencyKey: command.idempotencyKey,
+      payloadHash: command.payloadHash,
+      walletId: command.walletId,
+      playerId: command.playerId,
+      roundId: command.roundId,
+      gameId: command.gameId,
+      kind: command.kind,
+      money: command.money,
+      referenceExternalTransactionId: command.referenceExternalTransactionId,
+      createdAt: new Date(),
+    });
+
+    try {
+      return await this.persistence.transaction(async (session) => {
+        const registration = await session.registerInboxMessage(inboxMessage);
+        this.assertInboxRegistration(registration);
+        if (registration === 'DUPLICATE') {
+          const existing = await session.findByIdempotencyKey(
+            command.idempotencyKey,
+          );
+          return {
+            kind: 'DUPLICATE_INBOX_MESSAGE',
+            ...(existing
+              ? { result: this.replay(existing, command.payloadHash) }
+              : {}),
+          };
+        }
+
+        const existing = await session.findByIdempotencyKey(
+          command.idempotencyKey,
+        );
+        if (existing) {
+          const result = this.replay(existing, command.payloadHash);
+          inboxMessage.markProcessed(new Date());
+          await session.markInboxMessageProcessed(inboxMessage);
+          return { kind: 'RESULT', result };
+        }
+
+        await session.insertPendingTransaction(transaction);
+        transaction.fail(PROCESSING_RETRIES_EXHAUSTED);
+        await session.saveFailedTransaction(transaction);
+        inboxMessage.markProcessed(new Date());
+        await session.markInboxMessageProcessed(inboxMessage);
+
+        return {
+          kind: 'RESULT',
+          result: {
+            transactionId: transaction.id,
+            status: WagerTransactionStatus.Failed,
+            balance: null,
+            idempotentReplay: false,
+            failureCode: PROCESSING_RETRIES_EXHAUSTED,
+          },
+        };
+      });
+    } catch (error) {
+      if (!(error instanceof WagerIdentityAlreadyExistsError)) {
+        throw error;
+      }
+      if (error.kind === 'provider-transaction') {
+        throw new ProviderTransactionConflictError();
+      }
+
+      const existing = await this.persistence.findByIdempotencyKey(
+        command.idempotencyKey,
+      );
+      if (!existing) {
+        throw new WagerPersistenceInvariantError(
+          'A restrição de idempotência conflitou, mas a transação não foi encontrada após a reversão.',
+        );
+      }
+
+      const result = this.replay(existing, command.payloadHash);
+      await this.completeInboxOutsideWager(identity);
       return { kind: 'RESULT', result };
     }
   }
@@ -758,6 +879,20 @@ export class ProcessWager {
         status: WagerTransactionStatus.PendingReference,
         balance: null,
         idempotentReplay: true,
+      };
+    }
+    if (existing.status === WagerTransactionStatus.Failed) {
+      if (!existing.failureCode) {
+        throw new WagerPersistenceInvariantError(
+          'Uma transação FAILED persistida precisa possuir failureCode.',
+        );
+      }
+      return {
+        transactionId: existing.transactionId,
+        status: WagerTransactionStatus.Failed,
+        balance: existing.balance,
+        idempotentReplay: true,
+        failureCode: existing.failureCode,
       };
     }
     if (

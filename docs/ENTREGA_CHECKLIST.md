@@ -25,7 +25,7 @@ Este checklist cruza os requisitos do enunciado com o código e os testes dispon
 | Idempotência persistente, chave global e payload conflitante | Constraint da migration, hash-wager-payload.ts e testes de wagering | Replay retorna snapshot; mesma chave com conteúdo diferente conflita. |
 | Reversão única por referência e tipo | Índice único parcial e testes de reversão concorrente | Constraint de banco mais validação de domínio. |
 | Códigos de rejeição estáveis | `ProcessWager`, eventos de rejeição e tabela em ARCHITECTURE.md | BET sem saldo, reversão que não cabe, referência inválida/expirada e reversão duplicada possuem códigos explícitos; falhas de payload sem transação são respostas HTTP distintas. |
-| Estado terminal `FAILED` | `WagerTransaction.fail`, teste unitário e constraints PostgreSQL | Parcial: entidade/schema aceitam e protegem o estado, mas o caso de uso não grava uma transação `FAILED`; limite e decisão necessária estão descritos em ARCHITECTURE.md. |
+| Estado terminal `FAILED` após retries SQS | `ProcessWager.failAfterRetriesFromInbox` e `test/integration/messaging/wager-sqs-consumer.spec.ts` | Validado: na quinta entrega grava FAILED e conclui a inbox atomicamente; não altera saldo nem ledger, retorna replay idempotente e move a mensagem à DLQ. Se PostgreSQL não estiver disponível, somente a DLQ é garantida. |
 | Atomicidade entre carteira, transação, ledger, inbox e outbox | PostgresWagerPersistence e testes de falha induzida | O rollback PostgreSQL reverte o conjunto. |
 | Reconciliação sem reparo automático | ReconcileWallet e teste HTTP | Compara saldo armazenado e ledger; divergência é observável. |
 
@@ -62,7 +62,7 @@ Este checklist cruza os requisitos do enunciado com o código e os testes dispon
 - [x] Contrato OpenAPI cobre carteiras, wagering, consultas, reconciliação, health checks, métricas e console de atividade; checagem estática conferiu 13 rotas e 62 referências internas sem nomes pendentes.
 - [x] Comentários iniciais em português conferidos em 115 arquivos de código/configuração; assinaturas pessoais removidas.
 - [x] Estrutura DDD existente mantida; navegação explicada em README sem mover módulos sem justificativa.
-- [x] Verificação final: backend `bun run check` e `bun run build` passaram; `bun run test` passou com 133 testes, 707 expectativas e 0 falhas. No pacote web, `bun run check`, `bun test` (26 testes, 72 expectativas) e `bun run build` passaram.
+- [x] Verificação final: backend `bun run check` e `bun run build` passaram; `bun run test` passou com 133 testes, 714 expectativas e 0 falhas. No pacote web, `bun run check`, `bun test` (26 testes, 72 expectativas) e `bun run build` passaram.
 
 ## Limitações conhecidas
 

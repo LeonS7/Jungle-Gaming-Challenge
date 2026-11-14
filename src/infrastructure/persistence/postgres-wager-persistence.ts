@@ -593,6 +593,30 @@ class PostgresWagerTransactionSession implements WagerTransactionSession {
     }
   }
 
+  async saveFailedTransaction(transaction: WagerTransaction): Promise<void> {
+    if (
+      transaction.status !== WagerTransactionStatus.Failed ||
+      !transaction.failureCode
+    ) {
+      throw new WagerPersistenceInvariantError(
+        'Somente uma transação FAILED com código de falha pode ser persistida como falha.',
+      );
+    }
+
+    const updated = await this.execute(
+      `update ${qualifiedTable(this.schema, 'wager_transactions')}
+       set "status" = 'FAILED', "failure_code" = ?
+       where "id" = ? and "status" = 'PENDING'
+       returning "id"`,
+      [transaction.failureCode, transaction.id],
+    );
+    if (updated.length !== 1) {
+      throw new WagerPersistenceInvariantError(
+        'A transação pendente não pôde ser concluída como FAILED.',
+      );
+    }
+  }
+
   private async readByIdempotencyKey(
     key: string,
   ): Promise<PersistedWagerResult | null> {

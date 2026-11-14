@@ -31,6 +31,7 @@ import {
   WagerWalletOwnerMismatchError,
 } from '../../application/wagering/process-wager.js';
 import { PersistenceUnavailableError } from '../../application/shared/persistence-unavailable.error.js';
+import { WagerTransactionStatus } from '../../domain/wagering/wager-transaction.js';
 import type { ApplicationConfig } from '../../config/application-config.js';
 import { APPLICATION_CONFIG } from '../../config/config.constants.js';
 import { parseWagerQueueMessage } from './wager-message-parser.js';
@@ -39,6 +40,7 @@ import { WageringMetrics } from '../observability/wagering-metrics.js';
 const VISIBILITY_TIMEOUT_SECONDS = 45;
 const VISIBILITY_HEARTBEAT_MILLISECONDS = 15_000;
 const MAX_RETRY_VISIBILITY_SECONDS = 60;
+const MAX_PROCESSING_ATTEMPTS = 5; // Alinhado ao maxReceiveCount da fila.
 
 interface QueueUrls {
   readonly source: string;
@@ -207,31 +209,86 @@ export class WagerSqsConsumer implements OnModuleInit, OnModuleDestroy {
       const completeContext = {
         ...context,
         correlationId: result.result?.transactionId ?? context.correlationId,
-        transactionId: result.result?.transactionId,
+        ...(result.result?.transactionId
+          ? { transactionId: result.result.transactionId }
+          : {}),
       };
-      await this.deleteMessage(message.ReceiptHandle);
-      logStructured(this.logger, 'log', 'sqs.consumer.message_committed', {
-        ...completeContext,
-        consumerName: parsed.identity.consumerName,
-        duplicate: result.duplicate,
-        status: result.result?.status,
-      });
+      if (result.result?.status === WagerTransactionStatus.Failed) {
+        await this.moveToDeadLetterQueue(
+          message,
+          result.result.failureCode ?? 'PROCESSING_RETRIES_EXHAUSTED',
+          completeContext,
+        );
+      } else {
+        await this.deleteMessage(message.ReceiptHandle);
+        logStructured(this.logger, 'log', 'sqs.consumer.message_committed', {
+          ...completeContext,
+          consumerName: parsed.identity.consumerName,
+          duplicate: result.duplicate,
+          status: result.result?.status,
+        });
+      }
     } catch (error) {
-      await stopHeartbeat();
       if (error instanceof InboxMessagePayloadConflictError) {
+        await stopHeartbeat();
         await this.moveToDeadLetterQueue(message, error.name, context);
       } else if (isTerminalBusinessError(error)) {
         try {
           await this.processWager.recordTerminalInboxMessage(parsed.identity);
+          await stopHeartbeat();
           await this.deleteMessage(message.ReceiptHandle);
           logStructured(this.logger, 'warn', 'sqs.consumer.business_error_acknowledged', {
             ...context,
             errorName: error instanceof Error ? error.name : 'Erro desconhecido',
           });
         } catch (terminalError) {
+          await stopHeartbeat();
           await this.retryLater(message, terminalError, context);
         }
+      } else if (receiveCount(message) >= MAX_PROCESSING_ATTEMPTS) {
+        try {
+          const failure = await this.processWager.failAfterRetriesFromInbox(
+            parsed.command,
+            parsed.identity,
+          );
+          await stopHeartbeat();
+          if (failure.result?.status === WagerTransactionStatus.Failed) {
+            logStructured(this.logger, 'error', 'sqs.consumer.transaction_failed', {
+              ...context,
+              transactionId: failure.result.transactionId,
+              failureCode: failure.result.failureCode,
+              attempt: receiveCount(message),
+            });
+            await this.moveToDeadLetterQueue(
+              message,
+              failure.result.failureCode ?? 'PROCESSING_RETRIES_EXHAUSTED',
+              context,
+            );
+          } else {
+            await this.deleteMessage(message.ReceiptHandle);
+            logStructured(this.logger, 'log', 'sqs.consumer.final_attempt_already_resolved', {
+              ...context,
+              status: failure.result?.status,
+              duplicate: failure.duplicate,
+            });
+          }
+        } catch (failureError) {
+          await stopHeartbeat();
+          logStructured(this.logger, 'error', 'sqs.consumer.failed_state_persistence_failed', {
+            ...context,
+            attempt: receiveCount(message),
+            errorName: failureError instanceof Error
+              ? failureError.name
+              : 'Erro desconhecido',
+          });
+          await this.moveToDeadLetterQueue(
+            message,
+            'FAILED_STATE_PERSISTENCE_UNAVAILABLE',
+            context,
+          );
+        }
       } else {
+        await stopHeartbeat();
         await this.retryLater(message, error, context);
       }
     } finally {

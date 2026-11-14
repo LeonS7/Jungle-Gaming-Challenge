@@ -637,6 +637,7 @@ components:
           type: boolean
         failureCode:
           type: string
+          description: PROCESSING_RETRIES_EXHAUSTED indica uma transação SQS persistida como FAILED após cinco entregas.
     WagerTransaction:
       type: object
       required:
