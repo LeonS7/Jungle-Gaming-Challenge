@@ -7,6 +7,7 @@ import TransactionHistoryWorkspace from './features/history/TransactionHistoryWo
 import CasinoGameWorkspace from './features/game/CasinoGameWorkspace.vue';
 import GuidedScenariosWorkspace from './features/laboratory/GuidedScenariosWorkspace.vue';
 import TransactionLaboratoryWorkspace from './features/laboratory/TransactionLaboratoryWorkspace.vue';
+import LoadTestWorkspace from './features/laboratory/LoadTestWorkspace.vue';
 import {
   readSelectedWalletId,
   removeSelectedWalletId,
@@ -250,7 +251,7 @@ onUnmounted(() => {
             <p class="eyebrow">FERRAMENTAS TÉCNICAS <span>•</span> AMBIENTE LOCAL</p>
             <h1>Laboratório de Testes</h1>
             <p class="page-description">
-              Saúde e métricas da API, ledger, reconciliação e ferramentas de idempotência.
+              Saúde da API, operações financeiras, reconciliação, idempotência e benchmark local do backend.
             </p>
           </div>
           <div class="updated-at" v-if="snapshot">
@@ -258,6 +259,8 @@ onUnmounted(() => {
             Atualizado em {{ formatTimestamp(snapshot.updatedAt) }}
           </div>
         </section>
+
+        <LoadTestWorkspace />
 
         <section v-if="selectedWallet" class="selected-wallet-banner laboratory-wallet-banner" aria-live="polite">
           <div>

@@ -52,24 +52,28 @@ export class ApiActivityLog {
 
   readPage(after: number | undefined, limit: number): ApiActivityPage {
     const oldestSequence = this.records[0]?.sequence;
-    const candidates = this.records.filter((record) =>
-      after === undefined || record.sequence > after
+    const currentSequence = this.sequence;
+    const cursorOutsideWindow = after !== undefined && (
+      after > currentSequence ||
+      oldestSequence !== undefined && after < oldestSequence - 1
     );
-    const initialOffset = after === undefined
+    const gap = after === undefined
+      ? oldestSequence !== undefined && oldestSequence > 1
+      : cursorOutsideWindow;
+    const jumpToLatest = after === undefined || cursorOutsideWindow;
+    const candidates = jumpToLatest
+      ? this.records
+      : this.records.filter((record) => record.sequence > after);
+    const initialOffset = jumpToLatest
       ? Math.max(0, candidates.length - limit)
       : 0;
     const items = candidates.slice(initialOffset, initialOffset + limit);
     const lastItem = items.at(-1);
-    const currentSequence = this.sequence;
 
     return {
       items,
-      nextCursor: lastItem?.sequence ?? after ?? currentSequence,
-      gap: oldestSequence !== undefined && (
-        after === undefined
-          ? oldestSequence > 1 || initialOffset > 0
-          : after < oldestSequence - 1
-      ),
+      nextCursor: lastItem?.sequence ?? (cursorOutsideWindow ? currentSequence : after ?? currentSequence),
+      gap,
       hasMore: candidates.length > initialOffset + items.length,
     };
   }

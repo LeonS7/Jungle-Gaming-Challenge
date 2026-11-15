@@ -35,7 +35,7 @@ test('o registro conserva somente as 500 entradas mais recentes', () => {
   expect(page.gap).toBe(true);
 });
 
-test('a primeira página sinaliza entradas retidas que ficaram antes dela', () => {
+test('a primeira página mostra as entradas recentes sem sinalizar lacuna enquanto o histórico está retido', () => {
   const activityLog = new ApiActivityLog();
   for (let index = 1; index <= 150; index += 1) {
     activityLog.append('log', `evento-${index}`);
@@ -45,6 +45,35 @@ test('a primeira página sinaliza entradas retidas que ficaram antes dela', () =
 
   expect(page.items[0]?.sequence).toBe(51);
   expect(page.items.at(-1)?.sequence).toBe(150);
+  expect(page.gap).toBe(false);
+  expect(page.hasMore).toBe(false);
+});
+
+test('um cursor atrasado salta para as entradas mais recentes após a retenção descartar as antigas', () => {
+  const activityLog = new ApiActivityLog();
+  for (let index = 1; index <= 600; index += 1) {
+    activityLog.append('log', `evento-${index}`);
+  }
+
+  const page = activityLog.readPage(1, 100);
+
+  expect(page.items).toHaveLength(100);
+  expect(page.items[0]?.sequence).toBe(501);
+  expect(page.items.at(-1)?.sequence).toBe(600);
+  expect(page.nextCursor).toBe(600);
+  expect(page.gap).toBe(true);
+  expect(page.hasMore).toBe(false);
+});
+
+test('um cursor de uma instância anterior é reposicionado para a sequência atual', () => {
+  const activityLog = new ApiActivityLog();
+  activityLog.append('log', 'evento-atual-1');
+  activityLog.append('log', 'evento-atual-2');
+
+  const page = activityLog.readPage(100, 100);
+
+  expect(page.items.map((item) => item.message)).toEqual(['evento-atual-1', 'evento-atual-2']);
+  expect(page.nextCursor).toBe(2);
   expect(page.gap).toBe(true);
   expect(page.hasMore).toBe(false);
 });

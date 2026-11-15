@@ -15,7 +15,8 @@
     "db:migrate:down": "bun run src/infrastructure/persistence/run-migrations.ts down",
     "test": "bun test --timeout=30000",
     "test:integration": "bun test --timeout=30000 test/integration",
-    "test:check": "bun test --check"
+    "test:check": "bun test --check",
+    "test:load": "bun run test/load/runner.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.1166.0",

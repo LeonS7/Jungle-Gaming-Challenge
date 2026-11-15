@@ -108,7 +108,7 @@ const ACTIVITY_CONSOLE_HTML = `<!doctype html>
         const pagina = await resposta.json();
         if (inicial && lista.querySelector('.vazio')) lista.replaceChildren();
         if (pagina.gap) {
-          aviso.textContent = 'O início do histórico não está mais disponível; o buffer local é limitado.';
+          aviso.textContent = 'O limite local descartou registros antigos; o console retomou pelas atividades mais recentes.';
           aviso.style.display = 'block';
         }
         for (const registro of pagina.items) adicionarRegistro(registro);

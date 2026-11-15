@@ -15,6 +15,7 @@ Implementação do desafio **Distributed Wagering Processor**, da Jungle Gaming.
 - Worker para resolver transações que aguardam uma referência fora de ordem.
 - Health checks, métricas Prometheus e console local de atividade em **GET /**.
 - Painel visual com as áreas **Jogo**, **Extrato** e **Laboratório de Testes**, cenários guiados e chamadas à API real.
+- Benchmark local configurável com cenários distribuídos, disputa de carteira, idempotência e pressão/drenagem da outbox; gera relatórios JSON e Markdown.
 - Recuperação da rodada ativa e do retry incerto após navegação ou recarga, sempre consultando a API como fonte do estado financeiro.
 
 ## Tecnologias
@@ -54,7 +55,7 @@ No diretório raiz do repositório, em um terminal PowerShell:
 
 A cópia de .env.example é necessária somente na primeira execução. Confira **docker compose ps** para acompanhar PostgreSQL e LocalStack. **bun run start** compila o backend e inicia a API em **http://127.0.0.1:3000**.
 
-A raiz da API (**http://127.0.0.1:3000/**) abre o console local de atividade. Ele consulta os registros recentes do processo e não redireciona ao painel. Os registros ficam limitados aos 500 mais recentes, somem no reinício e não são compartilhados entre instâncias. Requisições HTTP são registradas sem corpo, cabeçalhos nem parâmetros; logs da aplicação também podem conter identificadores operacionais. Para consultar a API diretamente:
+A raiz da API (**http://127.0.0.1:3000/**) abre o console local de atividade. Ele consulta os registros recentes do processo e não redireciona ao painel. O buffer mantém no máximo 500 registros e descarta os mais antigos quando chegam novos; se o navegador ficar para trás ou a API reiniciar, o console salta para os registros mais recentes e continua atualizando. O histórico some no reinício e não é compartilhado entre instâncias. Requisições HTTP são registradas sem corpo, cabeçalhos nem parâmetros; logs da aplicação também podem conter identificadores operacionais. Para consultar a API diretamente:
 
     Invoke-RestMethod http://127.0.0.1:3000/health/live
     Invoke-RestMethod http://127.0.0.1:3000/health/ready
@@ -90,6 +91,30 @@ Para verificar o painel, em outro terminal:
     bun run build
 
 Os testes criam schemas e filas temporários e os removem ao terminar. Eles não substituem os dados da aplicação configurados em .env.
+
+## Executar o teste de carga
+
+O benchmark usa a API, o PostgreSQL e o LocalStack reais da execução local. Ele não substitui integrações por mocks e não altera as regras financeiras. Antes de iniciar, confirme que `http://127.0.0.1:3000` aponta para esta execução local, que o backend está pronto e que há espaço para os registros adicionais.
+
+Na raiz do repositório, execute:
+
+    bun run test:load
+
+O comando mostra um aviso e pede confirmação porque cria carteiras, transações, lançamentos no ledger e eventos permanentes. Em terminal automatizado, a confirmação precisa ser explícita:
+
+    bun run test:load -- --yes --scenario contention --concurrency 10,25,50
+
+Os cenários são `distributed`, `contention`, `idempotency` e `outbox`; `all` executa todos. A configuração também aceita `--api-url`, `--duration-seconds`, `--warmup-seconds`, `--repetitions`, `--wallet-count`, `--operations-per-wallet`, `--metrics-interval-seconds`, `--http-timeout-ms` e `--outbox-drain-timeout-seconds`. O runner aceita somente API, PostgreSQL e endpoint SQS locais (`localhost`, `127.0.0.1` ou `::1`); destinos remotos são recusados.
+
+No modo `all`, o cenário `outbox` é executado antes dos demais para isolar a drenagem do backlog criado pelo próprio benchmark. Ele usa no máximo 10 operações por carteira e 120 por execução; o cenário `distributed` mantém o volume definido em `--operations-per-wallet`.
+
+Os relatórios de cada execução ficam em `artifacts/load-tests/<execution-id>/summary.json` e `report.md`. O diretório é ignorado pelo Git para evitar publicar grandes relatórios locais ou dados operacionais. Nenhuma execução apaga dados financeiros.
+
+O mesmo runner está disponível no **Laboratório de Testes** enquanto o Vite estiver rodando com `bun run dev` em `web/`. A tela permite selecionar cenário e parâmetros, pede confirmação antes de iniciar e exibe andamento, resultados e links para os relatórios. O middleware local inicia o runner em um processo Bun separado; erros detalhados aparecem no terminal do Vite. O controle existe somente no servidor local de desenvolvimento, vinculado ao loopback; não faz parte da API NestJS nem do build de produção.
+
+O benchmark reporta latências observadas (mínima, média, máxima e p50/p95/p99), throughput HTTP e financeiro separados, erros operacionais, rejeições de negócio, replays, conflitos e métricas da outbox. Percentis usam nearest-rank. Ver [docs/LOAD_TEST_RESULTS.md](docs/LOAD_TEST_RESULTS.md) e [test/load/README.md](test/load/README.md) para metodologia e parâmetros.
+
+Os resultados descrevem apenas a máquina e o ambiente local usados; não são uma meta de RPS nem uma garantia de capacidade em produção.
 
 ## Contrato HTTP resumido
 

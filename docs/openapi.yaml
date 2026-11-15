@@ -796,10 +796,10 @@ components:
           maximum: 9007199254740991
         gap:
           type: boolean
-          description: Indica entradas anteriores fora do buffer ou da página inicial.
+          description: Indica que o cursor ficou fora da janela retida ou veio de um processo reiniciado; nesse caso os itens retornam da página mais recente e nextCursor é reposicionado para continuar acompanhando novas atividades.
         hasMore:
           type: boolean
-          description: Indica entradas retidas depois da página atual.
+          description: Indica que existem entradas mais novas retidas depois da página atual.
     ApiError:
       type: object
       required: [statusCode, code, message]
