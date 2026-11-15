@@ -153,7 +153,7 @@ As migrations são versionadas em **src/infrastructure/persistence/migrations**.
 
 ## Autoria e ferramentas de desenvolvimento
 
-O projeto foi conduzido por **Leonardo de Souza da Luz**. Codex foi utilizado de forma consciente como ferramenta auxiliar para análise, revisão, documentação e aceleração de tarefas de desenvolvimento. As decisões de domínio e as funcionalidades financeiras centrais do desafio são de autoria do responsável pelo projeto; o resultado deve ser apresentado com compreensão das escolhas e das evidências registradas.
+O projeto foi conduzido por mim **Leonardo de Souza da Luz**. Codex foi utilizado de forma consciente como ferramenta auxiliar para análise, revisão, documentação e aceleração de tarefas de desenvolvimento. As decisões de domínio e as funcionalidades financeiras centrais do desafio são de autoria do responsável pelo projeto; o resultado deve ser apresentado com compreensão das escolhas e das evidências registradas.
 
 ## Arquivos de referência
 
