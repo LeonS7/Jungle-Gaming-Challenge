@@ -104,9 +104,23 @@ O comando mostra um aviso e pede confirmação porque cria carteiras, transaçõ
 
     bun run test:load -- --yes --scenario contention --concurrency 10,25,50
 
-Os cenários são `distributed`, `contention`, `idempotency` e `outbox`; `all` executa todos. A configuração também aceita `--api-url`, `--duration-seconds`, `--warmup-seconds`, `--repetitions`, `--wallet-count`, `--operations-per-wallet`, `--metrics-interval-seconds`, `--http-timeout-ms` e `--outbox-drain-timeout-seconds`. O runner aceita somente API, PostgreSQL e endpoint SQS locais (`localhost`, `127.0.0.1` ou `::1`); destinos remotos são recusados.
+Os cenários são `distributed`, `contention`, `idempotency` e `outbox`; `all` executa todos. <!-- coderabbit-ai-generated:v1 -->
 
-No modo `all`, o cenário `outbox` é executado antes dos demais para isolar a drenagem do backlog criado pelo próprio benchmark. Ele usa no máximo 10 operações por carteira e 120 por execução; o cenário `distributed` mantém o volume definido em `--operations-per-wallet`.
+<!-- coderabbit-ai-generated-section:v1:c6042464d4dc83d663cdc0517d076756911533b44d7ab042a3dcf46c5cf84bd8 -->
+
+A configuração também aceita `--api-url`, `--duration-seconds`, `--warmup-seconds`, `--repetitions`, `--wallet-count`, `--operations-per-wallet`, `--outbox-operations-per-wallet`, `--outbox-max-operations`, `--metrics-interval-seconds`, `--http-timeout-ms`, `--outbox-drain-timeout-seconds` e contagens declaradas de processos. Consulte `test/load/README.md` para limites e perfil de evidência.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+O runner aceita somente API, PostgreSQL e endpoint SQS locais (`localhost`, `127.0.0.1` ou `::1`); destinos remotos são recusados.
+
+No modo `all`, o cenário `outbox` é executado antes dos demais para isolar a drenagem do backlog criado pelo próprio benchmark. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:a03a79fbb9aa4c270ecce07a981ee94a171e1c6cc309446cee32484f412578d6 -->
+
+Por padrão usa no máximo 10 operações por carteira e 120 por ensaio; esses limites são configuráveis com tetos de segurança de 1.000 por carteira e 10.000 por ensaio. O cenário `distributed` mantém o volume definido em `--operations-per-wallet`.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 Os relatórios de cada execução ficam em `artifacts/load-tests/<execution-id>/summary.json` e `report.md`. O diretório é ignorado pelo Git para evitar publicar grandes relatórios locais ou dados operacionais. Nenhuma execução apaga dados financeiros.
 

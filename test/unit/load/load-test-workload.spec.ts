@@ -16,4 +16,10 @@ describe('volume dos cenários de carga', () => {
     expect(maximumOperationsForScenario('outbox', 1, 100)).toBe(OUTBOX_MAX_OPERATIONS_PER_WALLET);
     expect(maximumOperationsForScenario('outbox', 3, 4)).toBe(12);
   });
+
+  test('aplica os limites explícitos sem exceder o volume geral configurado', () => {
+    expect(maximumOperationsForScenario('outbox', 12, 100, 50, 500)).toBe(500);
+    expect(maximumOperationsForScenario('outbox', 3, 100, 50, 500)).toBe(150);
+    expect(maximumOperationsForScenario('outbox', 3, 4, 50, 500)).toBe(12);
+  });
 });

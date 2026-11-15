@@ -1,6 +1,9 @@
 /** Esta página gera relatórios exclusivos com medições observadas pelo runner. */
 import { mkdir, writeFile } from 'node:fs/promises';
-import { cpus, arch, platform } from 'node:os';
+import { readFileSync } from 'node:fs';
+import { cpus, arch, platform, totalmem } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { calculateLatencyStatistics } from '../metrics/latency.js';
@@ -114,13 +117,67 @@ export function summarizeScenarioResult(result: ScenarioResult): ScenarioMetrics
   };
 }
 
-export function createLoadTestEnvironment(): LoadTestEnvironment {
+export function parsePhysicalCoreCount(cpuInfo: string): number | null {
+  const processors = cpuInfo.trim().split(/\n\s*\n/).filter((block) => /^processor\s*:/m.test(block));
+  if (processors.length === 0) return null;
+  const cores = new Set<string>();
+  for (const processor of processors) {
+    const physicalId = /^physical id\s*:\s*(\d+)\s*$/m.exec(processor)?.[1];
+    const coreId = /^core id\s*:\s*(\d+)\s*$/m.exec(processor)?.[1];
+    if (physicalId === undefined || coreId === undefined) return null;
+    cores.add(`${physicalId}:${coreId}`);
+  }
+  return cores.size;
+}
+
+export function createLoadTestEnvironment(config: LoadTestConfig): LoadTestEnvironment {
+  const processors = cpus();
+  let physicalCoreCount: number | null = null;
+  try {
+    if (platform() === 'linux') physicalCoreCount = parsePhysicalCoreCount(readFileSync('/proc/cpuinfo', 'utf8'));
+  } catch { /* Topologia indisponível nesta plataforma. */ }
   return {
     runtime: `Bun ${Bun.version}`,
     operatingSystem: platform(),
     architecture: arch(),
-    cpuCount: cpus().length,
+    cpuCount: processors.length,
+    cpuModel: processors[0]?.model || null,
+    physicalCoreCount,
+    totalMemoryBytes: totalmem(),
+    postgresVersion: null,
+    localstackVersion: null,
+    dockerServerVersion: null,
+    apiInstanceCount: config.apiInstanceCount,
+    consumerCount: config.consumerCount,
+    publisherCount: config.publisherCount,
   };
+}
+
+/** As falhas de metadados não interrompem o benchmark; valores desconhecidos ficam explícitos. */
+export async function collectLoadTestEnvironment(
+  config: LoadTestConfig,
+  postgresVersion: () => Promise<string | null>,
+  sqsEndpoint: string,
+): Promise<LoadTestEnvironment> {
+  const [postgres, localstack, docker] = await Promise.all([
+    postgresVersion().catch(() => null),
+    (async () => {
+      try {
+        const response = await fetch(new URL('/_localstack/info', sqsEndpoint), { signal: AbortSignal.timeout(2000) });
+        if (!response.ok) return null;
+        const body = await response.json() as { version?: unknown };
+        return typeof body.version === 'string' && /^[\w.:+-]{1,100}$/.test(body.version) ? body.version : null;
+      } catch { return null; }
+    })(),
+    (async () => {
+      try {
+        const { stdout } = await promisify(execFile)('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 2000 });
+        const version = stdout.trim();
+        return /^[\w.+-]{1,100}$/.test(version) ? version : null;
+      } catch { return null; }
+    })(),
+  ]);
+  return { ...createLoadTestEnvironment(config), postgresVersion: postgres, localstackVersion: localstack, dockerServerVersion: docker };
 }
 
 export function formatMarkdownReport(report: LoadTestReport): string {
@@ -143,6 +200,9 @@ export function formatMarkdownReport(report: LoadTestReport): string {
 - **Resultado de integridade:** ${report.integrityPassed ? 'Aprovado' : 'Falhou'}
 - **Ambiente de execução:** ${report.environment.runtime}
 - **Sistema:** ${report.environment.operatingSystem} / ${report.environment.architecture}, ${report.environment.cpuCount} CPUs lógicas
+- **CPU:** ${report.environment.cpuModel ?? 'N/A'}; núcleos físicos visíveis: ${report.environment.physicalCoreCount ?? 'N/A'}; memória total do host: ${numberText(report.environment.totalMemoryBytes / 1024 ** 3)} GiB
+- **PostgreSQL:** ${report.environment.postgresVersion ?? 'N/A'}; **LocalStack:** ${report.environment.localstackVersion ?? 'N/A'}; **Docker servidor:** ${report.environment.dockerServerVersion ?? 'N/A'}
+- **Topologia declarada:** ${report.environment.apiInstanceCount ?? 'N/A'} instâncias da API, ${report.environment.consumerCount ?? 'N/A'} consumers, ${report.environment.publisherCount ?? 'N/A'} publishers
 - **API local:** ${report.configuration.apiUrls.join(', ')}
 
 ## Metodologia
@@ -162,6 +222,8 @@ O runner coleta Prometheus antes, durante e depois de cada cenário. Contadores 
 | Concorrências | ${report.configuration.concurrencyLevels.join(', ')} |
 | Carteiras distribuídas | ${report.configuration.walletCount} |
 | Operações máximas por carteira | ${report.configuration.operationsPerWallet} |
+| Operações da outbox por carteira | ${report.configuration.outboxOperationsPerWallet} |
+| Operações da outbox por ensaio | ${report.configuration.outboxMaxOperations} |
 | Intervalo de métricas | ${report.configuration.metricsIntervalSeconds} s |
 | Timeout HTTP | ${report.configuration.httpTimeoutMilliseconds} ms |
 | Timeout de drenagem | ${report.configuration.outboxDrainTimeoutSeconds} s |
@@ -201,6 +263,7 @@ export async function writeLoadTestReport(
   config: LoadTestConfig,
   results: readonly ScenarioResult[],
   error?: string,
+  environment: LoadTestEnvironment = createLoadTestEnvironment(config),
 ): Promise<LoadTestReport> {
   const finishedAt = new Date().toISOString();
   const reportDirectory = resolve(REPOSITORY_ROOT, 'artifacts', 'load-tests', executionId);
@@ -219,11 +282,16 @@ export async function writeLoadTestReport(
       concurrencyLevels: config.concurrencyLevels,
       walletCount: config.walletCount,
       operationsPerWallet: config.operationsPerWallet,
+      outboxOperationsPerWallet: config.outboxOperationsPerWallet,
+      outboxMaxOperations: config.outboxMaxOperations,
+      apiInstanceCount: config.apiInstanceCount,
+      consumerCount: config.consumerCount,
+      publisherCount: config.publisherCount,
       metricsIntervalSeconds: config.metricsIntervalSeconds,
       httpTimeoutMilliseconds: config.httpTimeoutMilliseconds,
       outboxDrainTimeoutSeconds: config.outboxDrainTimeoutSeconds,
     },
-    environment: createLoadTestEnvironment(),
+    environment,
     results,
     summaries: results.map(summarizeScenarioResult),
     integrityPassed: error === undefined && results.length > 0 && results.every((result) =>
@@ -235,6 +303,7 @@ export async function writeLoadTestReport(
       'As métricas Prometheus são locais a cada instância; contadores são comparados por URL e gauges não são somados.',
       'LocalStack e PostgreSQL locais não representam latência, disponibilidade ou capacidade garantida da AWS e do ambiente de produção.',
       'Nenhum alvo ou meta de RPS é presumido; os números descrevem somente as amostras registradas nesta execução.',
+      'CPU lógica e memória total refletem o host visível ao runner, podendo diferir dos limites de contêiner; a topologia é declarada pelo operador.',
       ...(results.some((result) => result.metrics.length === 0 || result.metrics.some((snapshot) => snapshot.error !== undefined || snapshot.samples.length === 0))
         ? ['Uma ou mais coletas Prometheus ficaram indisponíveis; as métricas afetadas são apresentadas como N/A e os detalhes permanecem no JSON.']
         : []),

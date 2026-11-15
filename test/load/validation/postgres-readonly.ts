@@ -95,6 +95,12 @@ export class PostgresLoadTestReader {
     await this.orm.em.getConnection().execute('select 1 as "available"');
   }
 
+  async readServerVersion(): Promise<string | null> {
+    const rows = await this.orm.em.getConnection().execute('show server_version', [], 'all');
+    const version = (rows[0] as { server_version?: unknown } | undefined)?.server_version;
+    return typeof version === 'string' ? version : null;
+  }
+
   async readOutbox(walletIds: readonly string[]): Promise<OutboxSnapshot> {
     const walletParameters = [...walletIds];
     const rows = await this.orm.em.getConnection().execute(

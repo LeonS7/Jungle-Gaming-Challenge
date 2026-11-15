@@ -149,7 +149,15 @@ O painel **web/** usa Vue 3, TypeScript e Vite. **Jogo** cria ou seleciona carte
 
 O benchmark em `test/load/` chama os endpoints HTTP existentes e valida o resultado financeiro pela reconciliação da API e por consultas PostgreSQL somente leitura. O runner reutiliza o MikroORM e as opções de conexão do backend; não cria rotas de inspeção na API financeira. O `providerId`, os jogadores, as carteiras e as chaves usam identificadores exclusivos por execução. Não há `DELETE`, `TRUNCATE` ou reset de ledger.
 
-Os quatro cenários medem carga distribuída, disputa de saldo em uma carteira, replay/conflito de idempotência e produção/drenagem da outbox. No modo `all`, a outbox é executada antes das cargas que também produzem eventos para evitar que o seu resultado inclua um backlog criado por outro cenário. A pressão da outbox é limitada a 10 operações por carteira e 120 por execução, suficiente para exercitar publicação e drenagem no ambiente local sem transformar a demonstração em uma fila artificialmente longa. Prometheus é capturado antes, durante e depois. Contadores são comparados como deltas por URL de instância; gauges são mantidos como observações e o runner não os soma. A espera de lock reutiliza `wagering_wallet_lock_acquisition_seconds`; conflitos usam `wagering_lock_conflicts_total`; o atraso geral da outbox reutiliza `outbox_lag_seconds` e o estado específico das carteiras é consultado pela tabela `outbox_messages`.
+Os quatro cenários medem carga distribuída, disputa de saldo em uma carteira, replay/conflito de idempotência e produção/drenagem da outbox. No modo `all`, a outbox é executada antes das cargas que também produzem eventos para evitar que o seu resultado inclua um backlog criado por outro cenário. <!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:a5d696834d2477cb9a8b6d3e1bb160c3a3abb7118123cd4cf3451b980cf6be6a -->
+
+A pressão da outbox tem limites padrão de 10 operações por carteira e 120 por ensaio, configuráveis até 1.000 e 10.000, respectivamente, para experimentos controlados.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+Prometheus é capturado antes, durante e depois. Contadores são comparados como deltas por URL de instância; gauges são mantidos como observações e o runner não os soma. A espera de lock reutiliza `wagering_wallet_lock_acquisition_seconds`; conflitos usam `wagering_lock_conflicts_total`; o atraso geral da outbox reutiliza `outbox_lag_seconds` e o estado específico das carteiras é consultado pela tabela `outbox_messages`.
 
 O controle do painel é um middleware do Vite aplicado apenas ao servidor de desenvolvimento, não é registrado no NestJS e não existe no build estático. O Vite é vinculado a `127.0.0.1`; o middleware também recusa conexões não locais e valida a origem do POST. Ele permite executar somente a URL local configurada para o proxy do painel. O middleware inicia o runner como processo Bun separado usando `node:child_process`, sem depender do global `Bun` no contexto SSR do Vite; o progresso vem da saída padrão e os erros são encaminhados ao terminal do Vite. O estado temporário do job vive na memória do Vite apenas para exibir progresso; não participa de idempotência ou consistência financeira. Os relatórios duráveis são gravados em `artifacts/load-tests/<execution-id>/` e não contêm segredos.
 

@@ -21,6 +21,11 @@ Opções:
   --concurrency N,N,...            Níveis de concorrência (padrão: 10,25,50)
   --wallet-count N                 Carteiras distribuídas (padrão: 12)
   --operations-per-wallet N        Limite de operações por carteira (padrão: 100)
+  --outbox-operations-per-wallet N Limite da outbox por carteira (padrão: 10, máximo: 1000)
+  --outbox-max-operations N        Limite da outbox por ensaio (padrão: 120, máximo: 10000)
+  --api-instance-count N           Instâncias da API declaradas pelo operador
+  --consumer-count N               Consumers declarados pelo operador
+  --publisher-count N              Publishers declarados pelo operador
   --metrics-interval-seconds N     Intervalo de coleta (padrão: 5)
   --http-timeout-ms N              Timeout HTTP (padrão: 10000)
   --outbox-drain-timeout-seconds N Limite para drenagem da outbox (padrão: 60)
@@ -39,6 +44,10 @@ const SCENARIOS = new Set<LoadScenario | 'all'>([
 ]);
 
 type Environment = Readonly<Record<string, string | undefined>>;
+
+function optionalCount(value: string | undefined, name: string, minimum: number): number | null {
+  return value === undefined ? null : parseInteger(value, name, minimum, 1000);
+}
 
 function parseInteger(
   value: string,
@@ -142,6 +151,11 @@ function defaults(environment: Environment): LoadTestConfig {
       1,
       100_000,
     ),
+    outboxOperationsPerWallet: parseInteger(environment.LOAD_TEST_OUTBOX_OPERATIONS_PER_WALLET ?? '10', 'outbox-operations-per-wallet', 1, 1000),
+    outboxMaxOperations: parseInteger(environment.LOAD_TEST_OUTBOX_MAX_OPERATIONS ?? '120', 'outbox-max-operations', 1, 10000),
+    apiInstanceCount: optionalCount(environment.LOAD_TEST_API_INSTANCE_COUNT, 'api-instance-count', 1),
+    consumerCount: optionalCount(environment.LOAD_TEST_CONSUMER_COUNT, 'consumer-count', 0),
+    publisherCount: optionalCount(environment.LOAD_TEST_PUBLISHER_COUNT, 'publisher-count', 0),
     metricsIntervalSeconds: parseInteger(
       environment.LOAD_TEST_METRICS_INTERVAL_SECONDS ?? '5',
       'metrics-interval-seconds',
@@ -197,6 +211,8 @@ export function parseLoadTestArguments(
     const allowed = new Set([
       '--api-url', '--scenario', '--duration-seconds', '--warmup-seconds',
       '--repetitions', '--concurrency', '--wallet-count', '--operations-per-wallet',
+      '--outbox-operations-per-wallet', '--outbox-max-operations',
+      '--api-instance-count', '--consumer-count', '--publisher-count',
       '--metrics-interval-seconds', '--http-timeout-ms', '--outbox-drain-timeout-seconds',
     ]);
     if (!allowed.has(name)) {
@@ -231,6 +247,11 @@ export function parseLoadTestArguments(
         : base.concurrencyLevels,
       walletCount: parseInteger(values.get('--wallet-count') ?? String(base.walletCount), 'wallet-count', 1, 250),
       operationsPerWallet: parseInteger(values.get('--operations-per-wallet') ?? String(base.operationsPerWallet), 'operations-per-wallet', 1, 100_000),
+      outboxOperationsPerWallet: parseInteger(values.get('--outbox-operations-per-wallet') ?? String(base.outboxOperationsPerWallet), 'outbox-operations-per-wallet', 1, 1000),
+      outboxMaxOperations: parseInteger(values.get('--outbox-max-operations') ?? String(base.outboxMaxOperations), 'outbox-max-operations', 1, 10000),
+      apiInstanceCount: values.has('--api-instance-count') ? optionalCount(values.get('--api-instance-count'), 'api-instance-count', 1) : base.apiInstanceCount,
+      consumerCount: values.has('--consumer-count') ? optionalCount(values.get('--consumer-count'), 'consumer-count', 0) : base.consumerCount,
+      publisherCount: values.has('--publisher-count') ? optionalCount(values.get('--publisher-count'), 'publisher-count', 0) : base.publisherCount,
       metricsIntervalSeconds: parseInteger(values.get('--metrics-interval-seconds') ?? String(base.metricsIntervalSeconds), 'metrics-interval-seconds', 1, 3600),
       httpTimeoutMilliseconds: parseInteger(values.get('--http-timeout-ms') ?? String(base.httpTimeoutMilliseconds), 'http-timeout-ms', 100, 120_000),
       outboxDrainTimeoutSeconds: parseInteger(values.get('--outbox-drain-timeout-seconds') ?? String(base.outboxDrainTimeoutSeconds), 'outbox-drain-timeout-seconds', 1, 3600),

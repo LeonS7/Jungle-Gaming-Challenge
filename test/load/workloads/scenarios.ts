@@ -51,6 +51,8 @@ export function maximumOperationsForScenario(
   scenario: LoadScenario,
   walletCount: number,
   operationsPerWallet: number,
+  outboxOperationsPerWallet = OUTBOX_MAX_OPERATIONS_PER_WALLET,
+  outboxMaxOperations = OUTBOX_MAX_OPERATIONS,
 ): number {
   const configuredMaximum = walletCount * operationsPerWallet;
   if (scenario !== 'outbox') {
@@ -58,8 +60,8 @@ export function maximumOperationsForScenario(
   }
   return Math.min(
     configuredMaximum,
-    walletCount * OUTBOX_MAX_OPERATIONS_PER_WALLET,
-    OUTBOX_MAX_OPERATIONS,
+    walletCount * outboxOperationsPerWallet,
+    outboxMaxOperations,
   );
 }
 
@@ -341,6 +343,8 @@ async function executeWorkload(
       scenario,
       context.config.walletCount,
       context.config.operationsPerWallet,
+      context.config.outboxOperationsPerWallet,
+      context.config.outboxMaxOperations,
     );
     requests.push(...await runBoundedRequests(context, maxOperations, async (index) => {
       const wallet = wallets[index % wallets.length]!;

@@ -1,6 +1,7 @@
 /** Esta página verifica que o relatório distingue respostas, falhas e operações. */
 import { describe, expect, test } from 'bun:test';
-import { formatMarkdownReport, summarizeScenarioResult } from '../../../test/load/reporting/reports.js';
+import { collectLoadTestEnvironment, formatMarkdownReport, parsePhysicalCoreCount, summarizeScenarioResult } from '../../../test/load/reporting/reports.js';
+import { parseLoadTestArguments } from '../../../test/load/config.js';
 import type { LoadTestReport, ScenarioResult } from '../../../test/load/types.js';
 
 const scenario: ScenarioResult = {
@@ -79,6 +80,11 @@ describe('relatório do benchmark', () => {
         concurrencyLevels: [3],
         walletCount: 1,
         operationsPerWallet: 3,
+        outboxOperationsPerWallet: 10,
+        outboxMaxOperations: 120,
+        apiInstanceCount: 1,
+        consumerCount: 1,
+        publisherCount: 1,
         metricsIntervalSeconds: 1,
         httpTimeoutMilliseconds: 1000,
         outboxDrainTimeoutSeconds: 5,
@@ -88,6 +94,15 @@ describe('relatório do benchmark', () => {
         operatingSystem: 'sistema local',
         architecture: 'arquitetura local',
         cpuCount: 1,
+        cpuModel: 'CPU teste',
+        physicalCoreCount: 1,
+        totalMemoryBytes: 8 * 1024 ** 3,
+        postgresVersion: '17.1',
+        localstackVersion: '4.0.0',
+        dockerServerVersion: null,
+        apiInstanceCount: 1,
+        consumerCount: 1,
+        publisherCount: 1,
       },
       results: [scenario],
       summaries: [summarizeScenarioResult(scenario)],
@@ -106,5 +121,30 @@ describe('relatório do benchmark', () => {
     expect(markdown).toContain('Timeouts');
     expect(markdown).toContain('Verificações de integridade');
     expect(markdown).toContain('Medição local.');
+    expect(markdown).toContain('CPU teste; núcleos físicos visíveis: 1; memória total do host: 8.00 GiB');
+    expect(markdown).toContain('PostgreSQL:** 17.1; **LocalStack:** 4.0.0; **Docker servidor:** N/A');
+    expect(markdown).toContain('1 instâncias da API, 1 consumers, 1 publishers');
+  });
+
+  test('conta núcleos físicos por socket e trata topologia ausente como desconhecida', () => {
+    expect(parsePhysicalCoreCount('processor: 0\nphysical id: 0\ncore id: 0\n\nprocessor: 1\nphysical id: 0\ncore id: 0\n\nprocessor: 2\nphysical id: 1\ncore id: 0')).toBe(2);
+    expect(parsePhysicalCoreCount('processor: 0\n')).toBeNull();
+  });
+
+  test('coleta versões disponíveis e preserva dados ausentes sem interromper a execução', async () => {
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => Response.json({ version: '4.2.0:abcd' }) });
+    try {
+      const config = parseLoadTestArguments(['--api-instance-count', '1'], {}).config;
+      const environment = await collectLoadTestEnvironment(config, async () => '17.2', server.url.toString());
+      expect(environment.postgresVersion).toBe('17.2');
+      expect(environment.localstackVersion).toBe('4.2.0:abcd');
+      expect(environment.apiInstanceCount).toBe(1);
+      expect(environment.consumerCount).toBeNull();
+      const unavailable = await collectLoadTestEnvironment(config, async () => { throw new Error('indisponível'); }, 'http://127.0.0.1:1');
+      expect(unavailable.postgresVersion).toBeNull();
+      expect(unavailable.localstackVersion).toBeNull();
+    } finally {
+      server.stop(true);
+    }
   });
 });
