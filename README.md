@@ -53,7 +53,7 @@ No diretório raiz do repositório, em um terminal PowerShell:
     bun run db:migrate
     bun run start
 
-A cópia de .env.example é necessária somente na primeira execução. Confira **docker compose ps** para acompanhar PostgreSQL e LocalStack. **bun run start** compila o backend e inicia a API em **http://127.0.0.1:3000**.
+Caso o comando `docker compose up -d postgres localstack` apresente falha é porque o Docker nao esta aberto e ativo, abra o Docker e deixe-o em funcionamento, apos isso rode o comando novamente. A cópia de .env.example é necessária somente na primeira execução. Confira **docker compose ps** para acompanhar PostgreSQL e LocalStack. **bun run start** compila o backend e inicia a API em **http://127.0.0.1:3000**.
 
 A raiz da API (**http://127.0.0.1:3000/**) abre o console local de atividade. Ele consulta os registros recentes do processo e não redireciona ao painel. O buffer mantém no máximo 500 registros e descarta os mais antigos quando chegam novos; se o navegador ficar para trás ou a API reiniciar, o console salta para os registros mais recentes e continua atualizando. O histórico some no reinício e não é compartilhado entre instâncias. Requisições HTTP são registradas sem corpo, cabeçalhos nem parâmetros; logs da aplicação também podem conter identificadores operacionais. Para consultar a API diretamente:
 
