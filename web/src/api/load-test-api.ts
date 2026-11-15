@@ -7,6 +7,8 @@ export interface LoadTestFormValues {
   readonly concurrencyLevels: readonly number[];
   readonly walletCount: number;
   readonly operationsPerWallet: number;
+  readonly outboxOperationsPerWallet: number;
+  readonly outboxMaxOperations: number;
   readonly metricsIntervalSeconds: number;
   readonly httpTimeoutMilliseconds: number;
   readonly outboxDrainTimeoutSeconds: number;

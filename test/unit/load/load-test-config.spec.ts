@@ -14,6 +14,9 @@ describe('configuração do benchmark', () => {
     expect(parsed.config.apiUrls).toEqual(['http://127.0.0.1:3000']);
     expect(parsed.config.scenario).toBe('all');
     expect(parsed.config.concurrencyLevels).toEqual([10, 25, 50]);
+    expect(parsed.config.outboxOperationsPerWallet).toBe(10);
+    expect(parsed.config.outboxMaxOperations).toBe(120);
+    expect(parsed.config.apiInstanceCount).toBeNull();
     expect(parsed.config.confirmPersistentData).toBe(false);
     expect(validateLocalApiUrl('http://localhost:3001')).toBe('http://localhost:3001');
     expect(validateLocalApiUrl('http://[::1]:3002')).toBe('http://[::1]:3002');
@@ -60,5 +63,19 @@ describe('configuração do benchmark', () => {
     expect(() => parseLoadTestArguments(['--duration-seconds', '0'])).toThrow(InvalidLoadTestConfigurationError);
     expect(() => parseLoadTestArguments(['--concurrency', '10,201'])).toThrow(InvalidLoadTestConfigurationError);
     expect(() => parseLoadTestArguments(['--scenario', 'unsupported'])).toThrow(InvalidLoadTestConfigurationError);
+    expect(() => parseLoadTestArguments(['--outbox-max-operations', '10001'], {})).toThrow(InvalidLoadTestConfigurationError);
+    expect(() => parseLoadTestArguments(['--outbox-operations-per-wallet', '1001'], {})).toThrow(InvalidLoadTestConfigurationError);
+    expect(() => parseLoadTestArguments(['--api-instance-count', '0'], {})).toThrow(InvalidLoadTestConfigurationError);
+  });
+
+  test('aceita limites maiores e topologia declarada com prioridade da CLI', () => {
+    const { config } = parseLoadTestArguments(['--outbox-max-operations', '600', '--consumer-count', '0'], {
+      LOAD_TEST_OUTBOX_OPERATIONS_PER_WALLET: '50',
+      LOAD_TEST_OUTBOX_MAX_OPERATIONS: '500',
+      LOAD_TEST_API_INSTANCE_COUNT: '2',
+      LOAD_TEST_PUBLISHER_COUNT: '2',
+    });
+    expect([config.outboxOperationsPerWallet, config.outboxMaxOperations]).toEqual([50, 600]);
+    expect([config.apiInstanceCount, config.consumerCount, config.publisherCount]).toEqual([2, 0, 2]);
   });
 });

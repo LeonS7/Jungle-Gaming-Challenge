@@ -13,6 +13,11 @@ export interface LoadTestConfig {
   readonly concurrencyLevels: readonly number[];
   readonly walletCount: number;
   readonly operationsPerWallet: number;
+  readonly outboxOperationsPerWallet: number;
+  readonly outboxMaxOperations: number;
+  readonly apiInstanceCount: number | null;
+  readonly consumerCount: number | null;
+  readonly publisherCount: number | null;
   readonly metricsIntervalSeconds: number;
   readonly httpTimeoutMilliseconds: number;
   readonly outboxDrainTimeoutSeconds: number;
@@ -83,6 +88,15 @@ export interface LoadTestEnvironment {
   readonly operatingSystem: string;
   readonly architecture: string;
   readonly cpuCount: number;
+  readonly cpuModel: string | null;
+  readonly physicalCoreCount: number | null;
+  readonly totalMemoryBytes: number;
+  readonly postgresVersion: string | null;
+  readonly localstackVersion: string | null;
+  readonly dockerServerVersion: string | null;
+  readonly apiInstanceCount: number | null;
+  readonly consumerCount: number | null;
+  readonly publisherCount: number | null;
 }
 
 export interface ScenarioMetricsSummary {

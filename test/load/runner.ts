@@ -8,7 +8,7 @@ import {
   LOAD_TEST_HELP,
   validateLocalDependencyTargets,
 } from './config.js';
-import { summarizeScenarioResult, writeLoadTestReport } from './reporting/reports.js';
+import { collectLoadTestEnvironment, createLoadTestEnvironment, summarizeScenarioResult, writeLoadTestReport } from './reporting/reports.js';
 import { WageringApiClient } from './api-client.js';
 import { PostgresLoadTestReader } from './validation/postgres-readonly.js';
 import { executeScenarioTrial } from './workloads/scenarios.js';
@@ -68,6 +68,7 @@ export async function executeLoadTest(options: LoadTestRunOptions): Promise<Load
   const results: ScenarioResult[] = [];
   let reportError: string | undefined;
   let database: PostgresLoadTestReader | undefined;
+  let measuredEnvironment = createLoadTestEnvironment(options.config);
   publishProgress(options, {
     executionId,
     state: 'starting',
@@ -89,6 +90,7 @@ export async function executeLoadTest(options: LoadTestRunOptions): Promise<Load
     }
     database = await PostgresLoadTestReader.connect(applicationConfig);
     await database.checkConnection();
+    measuredEnvironment = await collectLoadTestEnvironment(options.config, () => database!.readServerVersion(), applicationConfig.sqs.endpoint);
 
     const providerId = `load-${executionId}`;
     const api = new WageringApiClient(options.config.apiUrls, options.config.httpTimeoutMilliseconds);
@@ -149,7 +151,7 @@ export async function executeLoadTest(options: LoadTestRunOptions): Promise<Load
     }
   }
 
-  const report = await writeLoadTestReport(executionId, startedAt, options.config, results, reportError);
+  const report = await writeLoadTestReport(executionId, startedAt, options.config, results, reportError, measuredEnvironment);
   publishProgress(options, {
     executionId,
     state: report.integrityPassed ? 'completed' : 'failed',

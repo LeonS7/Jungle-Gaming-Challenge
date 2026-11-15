@@ -41,9 +41,31 @@ O comando padrão executa os quatro cenários com concorrência `10,25,50`, uma 
 - **distributed:** distribui BETs de `0.01` entre carteiras exclusivas com saldo pré-carregado suficiente para o máximo configurado.
 - **contention:** envia BETs de `80.00` simultâneas para uma carteira com saldo `100.00`; espera uma operação processada e o restante rejeitado por saldo insuficiente.
 - **idempotency:** envia a mesma chave e payload em paralelo e, depois, o mesmo identificador/chave com payload divergente; espera um único processamento, replays e HTTP 409 `IDEMPOTENCY_CONFLICT`.
-- **outbox:** gera BETs distribuídas, mede eventos pendentes/publicados e aguarda a drenagem dentro do limite. Para manter a demonstração reproduzível, ele usa no máximo 10 operações por carteira e 120 operações por execução, mesmo se `operations-per-wallet` for maior. O cenário distribuído continua usando o volume configurado.
+- **outbox:** gera BETs distribuídas, mede eventos pendentes/publicados e aguarda a drenagem dentro do limite. <!-- coderabbit-ai-generated:v1 -->
 
-O aquecimento envia LOSS de `0.01` para uma carteira de saldo zero. As respostas de aquecimento não entram nas latências/throughput principais, mas seus registros também ficam persistidos e são incluídos na validação financeira.
+<!-- coderabbit-ai-generated-section:v1:a36539cd7031b6c4058dd16d3d4faa1f5a2f2d5228be87951fb5a2188d0333db -->
+
+Por padrão usa no máximo 10 operações por carteira e 120 por ensaio. Os limites próprios podem ser aumentados, até 1.000 por carteira e 10.000 por ensaio, sem ultrapassar `operations-per-wallet` nem o teto de duração. O cenário distribuído continua usando o volume configurado.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:946a2bf7c4f3bb2db02c645fc3e4420309356aa6df1f4fc75d9710bd7e39e878 -->
+
+Para uma execução de evidência mais extensa, após conferir os destinos e a capacidade local:
+
+```powershell
+bun run test:load -- --yes --scenario all --duration-seconds 60 --warmup-seconds 10 --repetitions 3 --concurrency 10,25,50 --api-instance-count 1 --consumer-count 1 --publisher-count 1
+```
+
+Ajuste as contagens à topologia efetiva. Os 60 segundos são um teto, não uma duração garantida: distributed e outbox podem terminar antes ao atingir seus limites; contention e idempotency executam rajadas de tamanho fixo. O aquecimento também limita o número de requisições e aguarda o restante do período. Isso não é um teste sustentado de 60 segundos nem prova do ponto de saturação.
+
+O aquecimento envia LOSS de `0.01` para uma carteira de saldo zero.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+As respostas de aquecimento não entram nas latências/throughput principais, mas seus registros também ficam persistidos e são incluídos na validação financeira.
 
 ## Opções
 
@@ -61,6 +83,26 @@ O aquecimento envia LOSS de `0.01` para uma carteira de saldo zero. As respostas
 | `--http-timeout-ms` | `LOAD_TEST_HTTP_TIMEOUT_MS` | `10000` |
 | `--outbox-drain-timeout-seconds` | `LOAD_TEST_OUTBOX_DRAIN_TIMEOUT_SECONDS` | `60` |
 | `--yes` | — | não confirmado |
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:5d7ac971732ece677396b00a6178086ed9e24776550a34a65d831fc207b56026 -->
+
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:3ce2c8a039ca7bace18d056878594ee9ea2aaa17b258c6497327a1d9a1cf6613 -->
+
+| Argumento adicional | Variável de ambiente | Padrão |
+|---|---|---:|
+| `--outbox-operations-per-wallet` | `LOAD_TEST_OUTBOX_OPERATIONS_PER_WALLET` | `10` (máximo 1.000) |
+| `--outbox-max-operations` | `LOAD_TEST_OUTBOX_MAX_OPERATIONS` | `120` (máximo 10.000) |
+| `--api-instance-count` | `LOAD_TEST_API_INSTANCE_COUNT` | não informado |
+| `--consumer-count` | `LOAD_TEST_CONSUMER_COUNT` | não informado |
+| `--publisher-count` | `LOAD_TEST_PUBLISHER_COUNT` | não informado |
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 `--api-url` aceita várias URLs locais separadas por vírgula para balancear chamadas entre instâncias. O banco configurado em `.env` deve ser compartilhado por elas. Métricas são lidas em cada URL, com contadores comparados por instância e gauges observados sem soma.
 
@@ -93,7 +135,15 @@ artifacts/load-tests/<execution-id>/summary.json
 artifacts/load-tests/<execution-id>/report.md
 ```
 
-O relatório contém a configuração, runtime e arquitetura, cenários, amostras, métricas, resultados de integridade e limitações. Não grava `.env`, senha, token nem conteúdo completo de requests. A pasta é ignorada pelo Git.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:55890643e85bb3568636e98d77b7c6f69cc9dc46ba2ef7ed27ccabd369a86249 -->
+
+O relatório contém a configuração, versão do Bun, sistema, arquitetura, <!-- coderabbit-ai-generated:v1 --> <!-- coderabbit-ai-generated-section:v1:9e67e5f6901eb9ff0a88ab0f5eb7526692f9c5fc5b9198a2a9c889d12c54b734 --> modelo da CPU, quantidade de CPUs lógicas e de núcleos físicos visíveis quando disponível, memória total visível ao host <!-- /coderabbit-ai-generated:v1 -->, versões detectadas do PostgreSQL, LocalStack e servidor Docker, cenários, amostras, métricas, resultados de integridade e limitações. Contagens de instâncias, consumers e publishers são declarações opcionais do operador, não detecção automática; valores indisponíveis aparecem como N/A. CPU e memória do host podem diferir dos limites do contêiner.
+
+<!-- /coderabbit-ai-generated:v1 -->
+
+Não grava `.env`, senha, token nem conteúdo completo de requests. A pasta é ignorada pelo Git.
 
 O controle web aparece no **Laboratório de Testes** quando o Vite está ativo com `bun run dev` em `web/`. O middleware local inicia o mesmo runner como subprocesso Bun e transmite o progresso para a página; erros completos ficam no terminal do Vite. Ele valida loopback e origem local e não é uma rota NestJS. O build estático não permite iniciar benchmark.
 

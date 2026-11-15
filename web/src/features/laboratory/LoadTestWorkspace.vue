@@ -26,6 +26,8 @@ const form = reactive({
   repetitions: 1,
   walletCount: 12,
   operationsPerWallet: 100,
+  outboxOperationsPerWallet: 10,
+  outboxMaxOperations: 120,
   metricsIntervalSeconds: 5,
   httpTimeoutMilliseconds: 10_000,
   outboxDrainTimeoutSeconds: 60,
@@ -180,7 +182,7 @@ onUnmounted(stopPolling);
           Mede a API, concorrência financeira, idempotência e drenagem da outbox. Nenhum saldo é calculado no navegador.
         </p>
         <p class="load-test-description">
-          Em “Todos os cenários”, a outbox roda primeiro e usa até 10 operações por carteira, com máximo de 120 operações, para medir drenagem sem backlog dos outros cenários.
+          Em “Todos os cenários”, a outbox roda primeiro e usa os limites configurados abaixo para medir drenagem sem backlog dos outros cenários.
         </p>
       </div>
       <span class="load-test-state" :class="active ? 'load-test-state-active' : ''">
@@ -236,7 +238,15 @@ onUnmounted(stopPolling);
         <label>
           Operações máximas por carteira
           <input v-model.number="form.operationsPerWallet" type="number" min="1" max="100000" :disabled="active">
-          <small>Aplica-se ao cenário distribuído. A outbox usa seu limite próprio de demonstração.</small>
+          <small>Aplica-se ao cenário distribuído e também limita a outbox por carteira.</small>
+        </label>
+        <label>
+          Operações da outbox por carteira
+          <input v-model.number="form.outboxOperationsPerWallet" type="number" min="1" max="1000" :disabled="active">
+        </label>
+        <label>
+          Operações da outbox por ensaio
+          <input v-model.number="form.outboxMaxOperations" type="number" min="1" max="10000" :disabled="active">
         </label>
         <label>
           Intervalo de métricas (segundos)

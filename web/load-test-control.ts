@@ -107,6 +107,7 @@ function parseWebConfiguration(
   const allowedFields = new Set([
     'confirmedPersistentData', 'scenario', 'durationSeconds', 'warmupSeconds',
     'repetitions', 'concurrencyLevels', 'walletCount', 'operationsPerWallet',
+    'outboxOperationsPerWallet', 'outboxMaxOperations',
     'metricsIntervalSeconds', 'httpTimeoutMilliseconds', 'outboxDrainTimeoutSeconds',
   ]);
   if (Object.keys(body).some((key) => !allowedFields.has(key))) {
@@ -133,6 +134,8 @@ function parseWebConfiguration(
     '--concurrency', body.concurrencyLevels.map(String).join(','),
     '--wallet-count', text('walletCount'),
     '--operations-per-wallet', text('operationsPerWallet'),
+    ...(body.outboxOperationsPerWallet === undefined ? [] : ['--outbox-operations-per-wallet', text('outboxOperationsPerWallet')]),
+    ...(body.outboxMaxOperations === undefined ? [] : ['--outbox-max-operations', text('outboxMaxOperations')]),
     '--metrics-interval-seconds', text('metricsIntervalSeconds'),
     '--http-timeout-ms', text('httpTimeoutMilliseconds'),
     '--outbox-drain-timeout-seconds', text('outboxDrainTimeoutSeconds'),
@@ -184,6 +187,8 @@ function runnerArguments(config: ReturnType<typeof parseLoadTestArguments>['conf
     '--concurrency', config.concurrencyLevels.join(','),
     '--wallet-count', String(config.walletCount),
     '--operations-per-wallet', String(config.operationsPerWallet),
+    '--outbox-operations-per-wallet', String(config.outboxOperationsPerWallet),
+    '--outbox-max-operations', String(config.outboxMaxOperations),
     '--metrics-interval-seconds', String(config.metricsIntervalSeconds),
     '--http-timeout-ms', String(config.httpTimeoutMilliseconds),
     '--outbox-drain-timeout-seconds', String(config.outboxDrainTimeoutSeconds),
